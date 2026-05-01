@@ -59,12 +59,19 @@ const {useState, useEffect, createContext, useContext, useRef} = React;
 // No external chart library needed
 
 // ── Colors ───────────────────────────────────────────────────────────────────
-const C = {
+const DARK = {
   bg:'#0a0e1a', surface:'#111827', hover:'#1a2235', border:'#1e2d45',
   accent:'#00e5ff', accentDim:'#00e5ff18', green:'#00c896', red:'#ff4d6d',
   yellow:'#ffd166', purple:'#9b72ff', orange:'#ff9a3c', text:'#e8f0fe',
   dim:'#6b7fa3', white:'#ffffff'
 };
+const LIGHT = {
+  bg:'#f4f6fb', surface:'#ffffff', hover:'#e8edf5', border:'#d1d9e6',
+  accent:'#0077cc', accentDim:'#0077cc18', green:'#0a8a5c', red:'#d63c4e',
+  yellow:'#b97a00', purple:'#6b48cc', orange:'#c45f00', text:'#1a2235',
+  dim:'#6b7fa3', white:'#0a0e1a'
+};
+let C = {...DARK};
 const PAL = [C.accent,C.purple,C.green,C.yellow,C.red,C.orange,'#ff6eb4','#4ecdc4'];
 
 // ── Pure CSS/SVG Charts (no external library) ──────────────────────────────
@@ -1367,7 +1374,6 @@ function BackupModal({data,setData,onClose}) {
 // ── APP ───────────────────────────────────────────────────────────────────────
 const TABS=[
   {id:'dashboard',label:'Dashboard',icon:'⚡'},
-  {id:'transaccions',label:'Historial',icon:'📋'},
   {id:'fixes',label:'Fixes',icon:'📌'},
   {id:'variables',label:'Variables',icon:'📊'},
   {id:'inversions',label:'Inversions',icon:'📈'},
@@ -1380,7 +1386,16 @@ function App() {
   const [blurred,setBlurred]=useState(false);
   const [showBackup,setShowBackup]=useState(false);
   const [saveStatus,setSaveStatus]=useState('idle');
+  const [theme,setTheme]=useState(()=>localStorage.getItem('fintrack-theme')||'dark');
   const [data,setData]=useState(()=>load()||INIT);
+
+  // Apply theme
+  useEffect(()=>{
+    C = theme==='dark' ? {...DARK} : {...LIGHT};
+    document.body.style.background = C.bg;
+    document.querySelector('meta[name="theme-color"]').setAttribute('content', C.bg);
+    localStorage.setItem('fintrack-theme', theme);
+  },[theme]);
 
   // Desa en cada canvi
   useEffect(()=>{
