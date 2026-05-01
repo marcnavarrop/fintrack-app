@@ -1103,10 +1103,168 @@ function Fire({data,setData}) {
   );
 }
 
-// ── BACKUP MODAL ──────────────────────────────────────────────────────────────
+// ── GOOGLE DRIVE HELPERS ─────────────────────────────────────────────────────
+const GD_CLIENT_ID = ''; // Opcional: posa aquí el teu Client ID de Google
+const GD_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+const GD_FILE_NAME = 'fintrack-backup.json';
+
+async function gdSave(json) {
+  if(!window.gapi||!window.gapi.auth2) return {ok:false,msg:'Google API no disponible'};
+  try {
+    const auth = window.gapi.auth2.getAuthInstance();
+    if(!auth.isSignedIn.get()) await auth.signIn();
+    const token = auth.currentUser.get().getAuthResponse().access_token;
+    // Search for existing file
+    const search = await fetch(
+      'https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name="'+GD_FILE_NAME+'"',
+      {headers:{Authorization:'Bearer '+token}}
+    );
+    const files = await search.json();
+    const fileId = files.files?.[0]?.id;
+    const metadata = {name:GD_FILE_NAME,parents:fileId?undefined:['appDataFolder']};
+    const form = new FormData();
+    form.append('metadata',new Blob([JSON.stringify(metadata)],{type:'application/json'}));
+    form.append('file',new Blob([json],{type:'application/json'}));
+    const url = fileId
+      ? 'https://www.googleapis.com/upload/drive/v3/files/'+fileId+'?uploadType=multipart'
+      : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id';
+    const method = fileId ? 'PATCH' : 'POST';
+    const resp = await fetch(url,{method,headers:{Authorization:'Bearer '+token},body:form});
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    return {ok:true,msg:'✓ Desat a Google Drive'};
+  } catch(err) {
+    return {ok:false,msg:'✗ Error Drive: '+err.message};
+  }
+}
+
+async function gdLoad(setData) {
+  if(!window.gapi||!window.gapi.auth2) return {ok:false,msg:'Google API no disponible'};
+  try {
+    const auth = window.gapi.auth2.getAuthInstance();
+    if(!auth.isSignedIn.get()) await auth.signIn();
+    const token = auth.currentUser.get().getAuthResponse().access_token;
+    const search = await fetch(
+      'https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name="'+GD_FILE_NAME+'"&fields=files(id,modifiedTime)',
+      {headers:{Authorization:'Bearer '+token}}
+    );
+    const files = await search.json();
+    if(!files.files?.length) return {ok:false,msg:'Cap backup trobat a Drive'};
+    const fileId = files.files[0].id;
+    const modTime = new Date(files.files[0].modifiedTime).toLocaleString('ca-ES');
+    const content = await fetch(
+      'https://www.googleapis.com/drive/v3/files/'+fileId+'?alt=media',
+      {headers:{Authorization:'Bearer '+token}}
+    );
+    const json = await content.text();
+    const parsed = JSON.parse(json);
+    if(typeof parsed.ingressos==='undefined') throw new Error('Format invàlid');
+    setData({...INIT,...parsed});
+    return {ok:true,msg:'✓ Restaurat des de Drive ('+modTime+')'};
+  } catch(err) {
+    return {ok:false,msg:'✗ Error: '+err.message};
+  }
+}
+
+// ── DIAGNOSTIC ────────────────────────────────────────────────────────────────
+function runDiagnostic(data) {
+  const issues = [];
+  const w = (cat,text,fix) => issues.push({cat,text,fix,sev:'warn'});
+  const e2 = (cat,text,fix) => issues.push({cat,text,fix,sev:'err'});
+  const inf = (cat,text,fix) => issues.push({cat,text,fix,sev:'info'});
+
+  if(!data.ingressos || data.ingressos===0)
+    e2('Ingressos','No has configurat la nomina mensual','Ves a Dashboard i edita la nomina');
+
+  const tFixes = data.gastosFixes.reduce((s,g)=>s+g.import,0);
+  if(data.ingressos>0 && tFixes>data.ingressos*0.7)
+    e2('Gastos Fixes','Els gastos fixes superen el 70% dels ingressos ('+Math.round(tFixes/data.ingressos*100)+'%)','Revisa si pots reduir algun gasto fix');
+
+  data.gastosFixes.forEach(g=>{
+    if(!g.categoria||g.categoria==='Altres') w('Gastos Fixes','El gasto "'+g.nom+'" no te categoria assignada','Edita-lo i assigna una categoria');
+    if(g.import<=0) e2('Gastos Fixes','El gasto "'+g.nom+'" te import 0 o negatiu','Elimina-lo o corregeix el import');
+  });
+
+  const cats = Object.keys(data.pressupostosVariables||{});
+  const mesActual = Object.keys(data.historialVariables||{}).sort().reverse()[0];
+  if(mesActual) {
+    const mesDades = data.historialVariables[mesActual]||{};
+    cats.forEach(cat=>{
+      const gastat = mesDades[cat]||0;
+      const pressupost = data.pressupostosVariables[cat]||0;
+      if(gastat > pressupost*1.2)
+        e2('Variables','La categoria "'+cat+'" ha superat el pressupost un '+Math.round((gastat/pressupost-1)*100)+'%','Considera augmentar el pressupost o reduir la despesa');
+    });
+  }
+
+  data.inversions.forEach(inv=>{
+    if(!inv.ticker) inf('Inversions','"'+inv.nom+'" no te ticker assignat','Edita-la i afegeix el ticker per actualitzar preus');
+    if(inv.cost>0 && inv.valor<inv.cost*0.5) e2('Inversions','"'+inv.nom+'" ha perdut mes del 50% del valor','Revisa si vols mantenir aquesta posicio');
+    if(inv.valor<=0) w('Inversions','"'+inv.nom+'" te valor 0 o negatiu','Actualitza el valor o elimina-la');
+  });
+
+  const totalInv = data.inversions.reduce((s,i)=>s+i.valor,0);
+  const cripto = data.inversions.filter(i=>i.tipus==='Cripto').reduce((s,i)=>s+i.valor,0);
+  if(totalInv>0 && cripto/totalInv>0.4)
+    w('Inversions','La cripto representa el '+Math.round(cripto/totalInv*100)+'% de la cartera','Considera diversificar - alta exposicio a cripto es molt volatil');
+
+  data.bens.forEach(b=>{
+    if(b.deute>0 && !b.mensualitat) w('Bens','"'+b.nom+'" te deute pero sense mensualitat configurada','Edita-lo i afegeix la mensualitat');
+    if(b.deute>b.valorActual) e2('Bens','"'+b.nom+'" te deute superior al valor actual ('+fmt(b.deute-b.valorActual)+' negatiu)','El be te patrimoni net negatiu - revisa les xifres');
+    if(b.valorActual<=0) w('Bens','"'+b.nom+'" te valor actual 0','Actualitza el valor de mercat del be');
+  });
+
+  data.objectius.forEach(o=>{
+    if(o.actual>o.meta) inf('Objectius','"'+o.nom+'" ja ha assolit la meta!','Actualitza la meta o marca-lo com a completat');
+    if(o.meta<=0) w('Objectius','"'+o.nom+'" te meta 0 o negativa','Corregeix el import de la meta');
+  });
+
+  if(data.ingressos>0) {
+    const totalGastos = tFixes + Object.values(data.historialVariables?.[mesKey()]||{}).reduce((s,v)=>s+v,0);
+    const estalvi = data.ingressos - totalGastos;
+    const taxa = estalvi/data.ingressos;
+    if(taxa<0) e2('General','Estas gastant mes del que ingressses (deficit de '+fmt(Math.abs(estalvi))+')','Revisa els gastos variables i fixes');
+    else if(taxa<0.1) w('General','Taxa estalvi molt baixa ('+Math.round(taxa*100)+'%)','Es recomana estalviar almenys un 20% dels ingressos');
+    else if(taxa>=0.3) inf('General','Excel-lent taxa estalvi ('+Math.round(taxa*100)+'%)','Estàs en bon camí cap a la independència financera');
+  }
+
+  if(!data.gastosFixes.length && !data.inversions.length && !data.bens.length)
+    inf('General','L app esta buida','Comença afegint els teus gastos fixes, inversions i bens');
+
+  return issues;
+}
+
+// ── BACKUP + DIAGNOSTIC MODAL ─────────────────────────────────────────────────
 function BackupModal({data,setData,onClose}) {
+  const [tab,setTab]=useState('backup');
   const [backupText,setBackupText]=useState('');
   const [msg,setMsg]=useState('');
+  const [gdStatus,setGdStatus]=useState('idle'); // idle | loading | ok | error
+  const [gdMsg,setGdMsg]=useState('');
+  const [diagIssues,setDiagIssues]=useState(null);
+  const [gapiReady,setGapiReady]=useState(false);
+
+  // Load Google API
+  useEffect(()=>{
+    if(GD_CLIENT_ID && !window.gapi) {
+      const s=document.createElement('script');
+      s.src='https://apis.google.com/js/api.js';
+      s.onload=()=>{
+        window.gapi.load('auth2',()=>{
+          window.gapi.auth2.init({client_id:GD_CLIENT_ID,scope:GD_SCOPE})
+            .then(()=>setGapiReady(true))
+            .catch(()=>{});
+        });
+      };
+      document.head.appendChild(s);
+    } else if(window.gapi?.auth2) {
+      setGapiReady(true);
+    }
+  },[]);
+
+  // Run diagnostic on mount
+  useEffect(()=>{
+    if(tab==='diagnostic') setDiagIssues(runDiagnostic(data));
+  },[tab]);
 
   const exportar=()=>{
     const json=JSON.stringify(data,null,2);
@@ -1119,7 +1277,7 @@ function BackupModal({data,setData,onClose}) {
 
   const importarFitxer=ev=>{
     const file=ev.target.files[0];if(!file)return;
-    const r=new FileReader();r.onload=e=>setBackupText(e.target.result);r.readAsText(file);
+    const r=new FileReader();r.onload=e2=>setBackupText(e2.target.result);r.readAsText(file);
   };
 
   const importar=()=>{
@@ -1127,29 +1285,128 @@ function BackupModal({data,setData,onClose}) {
       const parsed=JSON.parse(backupText);
       if(typeof parsed.ingressos==='undefined')throw new Error('Format invàlid');
       setData({...INIT,...parsed});onClose();
-      setMsg('✓ Dades restaurades!');
     }catch(err){setMsg('✗ Error: '+err.message);}
   };
 
-  return e(Modal,{title:'💾 Backup de dades',onClose},
-    e('div',{style:{background:C.yellow+'18',border:`1px solid ${C.yellow}44`,borderRadius:9,padding:'10px 12px',marginBottom:16}},
-      e('div',{style:{color:C.yellow,fontSize:11,fontWeight:700,marginBottom:3}},'⚠️ Important'),
-      e('div',{style:{color:C.dim,fontSize:11,lineHeight:1.5}},'Les dades es guarden al navegador. Fes backup cada cop que acabis per no perdre res.')
+  const handleGdSave=async()=>{
+    setGdStatus('loading');setGdMsg('Desant a Drive...');
+    const r=await gdSave(JSON.stringify(data,null,2));
+    setGdStatus(r.ok?'ok':'error');setGdMsg(r.msg);
+  };
+
+  const handleGdLoad=async()=>{
+    setGdStatus('loading');setGdMsg('Carregant des de Drive...');
+    const r=await gdLoad(setData);
+    setGdStatus(r.ok?'ok':'error');setGdMsg(r.msg);
+    if(r.ok) setTimeout(onClose,1200);
+  };
+
+  const tabBtn=(id,label)=>e('button',{onClick:()=>setTab(id),style:{
+    flex:1,background:tab===id?C.surface:'transparent',color:tab===id?C.accent:C.dim,
+    border:'none',borderBottom:`2px solid ${tab===id?C.accent:'transparent'}`,
+    padding:'10px 0',cursor:'pointer',fontFamily:'inherit',fontWeight:700,fontSize:12,
+    transition:'all .15s'
+  }},label);
+
+  const sevColor={err:C.red,warn:C.yellow,info:C.accent};
+  const sevIcon={err:'X',warn:'!',info:'i'};
+
+  return e(Modal,{title:'',onClose,width:480},
+    // Tabs
+    e('div',{style:{display:'flex',borderBottom:`1px solid ${C.border}`,marginBottom:18,marginTop:-6}},
+      tabBtn('backup','💾 Backup'),
+      tabBtn('drive','☁️ Google Drive'),
+      tabBtn('diagnostic','🔍 Diagnòstic')
     ),
-    e('button',{onClick:exportar,style:{width:'100%',background:C.accent,color:C.bg,border:'none',borderRadius:10,padding:'11px 0',fontWeight:800,fontSize:13,cursor:'pointer',fontFamily:'inherit',marginBottom:16}},'⬇️ Descarregar backup (.json)'),
-    e('div',{style:{borderTop:`1px solid ${C.border}`,paddingTop:16,marginBottom:12}},
-      e('div',{style:{color:C.dim,fontSize:11,fontWeight:600,marginBottom:10,textTransform:'uppercase',letterSpacing:.5}},'Restaurar backup'),
-      e('label',{style:{display:'block',width:'100%',background:C.bg,border:`1px dashed ${C.border}`,borderRadius:9,padding:'10px 0',textAlign:'center',cursor:'pointer',color:C.dim,fontSize:12,marginBottom:10}},
-        '📂 Selecciona fitxer .json',
-        e('input',{type:'file',accept:'.json',onChange:importarFitxer,style:{display:'none'}})
+
+    // ── BACKUP TAB ──
+    tab==='backup' && e('div',null,
+      e('button',{onClick:exportar,style:{width:'100%',background:C.accent,color:C.bg,border:'none',borderRadius:10,padding:'11px 0',fontWeight:800,fontSize:13,cursor:'pointer',fontFamily:'inherit',marginBottom:12}},'⬇️ Descarregar backup (.json)'),
+      e('div',{style:{borderTop:`1px solid ${C.border}`,paddingTop:14}},
+        e('div',{style:{color:C.dim,fontSize:10,fontWeight:600,marginBottom:10,textTransform:'uppercase'}},'Restaurar des de fitxer'),
+        e('label',{style:{display:'block',width:'100%',background:C.bg,border:`1px dashed ${C.border}`,borderRadius:9,padding:'12px 0',textAlign:'center',cursor:'pointer',color:C.dim,fontSize:12,marginBottom:10}},
+          '📂 Selecciona fintrack_*.json',
+          e('input',{type:'file',accept:'.json',onChange:importarFitxer,style:{display:'none'}})
+        ),
+        backupText && e('div',null,
+          e('div',{style:{color:C.green,fontSize:11,marginBottom:8}},'✓ Fitxer carregat ('+( backupText.length/1024).toFixed(1)+' KB)'),
+          e('button',{onClick:importar,style:{width:'100%',background:C.green,color:C.bg,border:'none',borderRadius:9,padding:'10px 0',fontWeight:800,fontSize:12,cursor:'pointer',fontFamily:'inherit'}},'⬆️ Restaurar ara')
+        )
       ),
-      backupText && e('div',null,
-        e('div',{style:{color:C.green,fontSize:11,marginBottom:8}},`✓ Fitxer carregat (${(backupText.length/1024).toFixed(1)} KB)`),
-        e('button',{onClick:importar,style:{width:'100%',background:C.green,color:C.bg,border:'none',borderRadius:9,padding:'10px 0',fontWeight:800,fontSize:12,cursor:'pointer',fontFamily:'inherit'}},'⬆️ Restaurar ara')
+      msg && e('div',{style:{marginTop:12,background:msg.startsWith('✓')?C.green+'22':C.red+'22',border:`1px solid ${msg.startsWith('✓')?C.green:C.red}44`,borderRadius:8,padding:'8px 12px',color:msg.startsWith('✓')?C.green:C.red,fontSize:12}},msg)
+    ),
+
+    // ── GOOGLE DRIVE TAB ──
+    tab==='drive' && e('div',null,
+      GD_CLIENT_ID
+        ? e('div',null,
+            e('div',{style:{background:C.surface,border:'1px solid '+C.border,borderRadius:10,padding:14,marginBottom:12,display:'flex',alignItems:'center',gap:10}},
+              e('div',{style:{width:8,height:8,borderRadius:'50%',background:gapiReady?C.green:C.dim,flexShrink:0}}),
+              e('span',{style:{color:gapiReady?C.green:C.dim,fontSize:12}},gapiReady?'Connectat a Google':'Connectant...')
+            ),
+            e('button',{onClick:handleGdSave,disabled:!gapiReady||gdStatus==='loading',
+              style:{width:'100%',background:C.accent,color:C.bg,border:'none',borderRadius:10,padding:'11px 0',fontWeight:800,fontSize:13,cursor:(!gapiReady||gdStatus==='loading')?'not-allowed':'pointer',fontFamily:'inherit',marginBottom:10,opacity:(!gapiReady||gdStatus==='loading')?.6:1}},
+              gdStatus==='loading'?'Desant...':'Desar a Google Drive'
+            ),
+            e('button',{onClick:handleGdLoad,disabled:!gapiReady||gdStatus==='loading',
+              style:{width:'100%',background:'transparent',border:'1px solid '+C.border,color:C.dim,borderRadius:10,padding:'10px 0',fontWeight:700,fontSize:12,cursor:(!gapiReady||gdStatus==='loading')?'not-allowed':'pointer',fontFamily:'inherit',opacity:(!gapiReady||gdStatus==='loading')?.6:1}},
+              'Restaurar des de Drive'
+            ),
+            gdMsg && e('div',{style:{marginTop:12,background:gdMsg.startsWith('ok')?C.green+'22':C.red+'22',border:'1px solid '+(gdMsg.startsWith('ok')?C.green:C.red)+'44',borderRadius:8,padding:'8px 12px',color:gdMsg.startsWith('ok')?C.green:C.red,fontSize:12}},gdMsg)
+          )
+        : e('div',null,
+            e('div',{style:{background:C.yellow+'18',border:'1px solid '+C.yellow+'44',borderRadius:10,padding:16,marginBottom:14}},
+              e('div',{style:{color:C.yellow,fontWeight:700,fontSize:13,marginBottom:8}},'Configuracio necessaria'),
+              e('div',{style:{color:C.dim,fontSize:12,lineHeight:1.7}},
+                'Per usar Drive necessites un Client ID de Google OAuth2.',e('br'),
+                '1. Ves a console.cloud.google.com',e('br'),
+                '2. Crea projecte - Drive API - Activa',e('br'),
+                '3. Credencials - OAuth 2.0 - Web application',e('br'),
+                '4. Copia el Client ID i enganxa-lo al fitxer HTML a la linia GD_CLIENT_ID'
+              )
+            ),
+            e('div',{style:{background:C.surface,border:'1px solid '+C.border,borderRadius:10,padding:14}},
+              e('div',{style:{color:C.green,fontSize:12,fontWeight:700,marginBottom:6}},'Alternativa senzilla'),
+              e('div',{style:{color:C.dim,fontSize:12,lineHeight:1.6}},'Usa la pestanya Backup per descarregar un .json i desa-lo a Google Drive manualment.')
+            )
+          )
+    ),
+
+    // ── DIAGNOSTIC TAB ──
+    tab==='diagnostic' && e('div',null,
+      diagIssues===null && e('div',{style:{textAlign:'center',padding:20,color:C.dim}},'Analitzant...'),
+      diagIssues && diagIssues.length===0 && e('div',{style:{textAlign:'center',padding:24}},
+        e('div',{style:{fontSize:32,marginBottom:8}},'✓'),
+        e('div',{style:{color:C.green,fontWeight:700,fontSize:14,marginBottom:4}},'Tot correcte!'),
+        e('div',{style:{color:C.dim,fontSize:12}},"No shan detectat errors ni inconsistencies.")
+      ),
+      diagIssues && diagIssues.length>0 && e('div',null,
+        e('div',{style:{display:'flex',gap:12,marginBottom:14}},
+          ['err','warn','info'].map(sev=>{
+            const count=diagIssues.filter(i=>i.sev===sev).length;
+            if(!count) return null;
+            const labels={err:'Error',warn:'Avís',info:'Info'};
+            return e('div',{key:sev,style:{display:'flex',alignItems:'center',gap:5}},
+              e('span',{style:{color:sevColor[sev],fontWeight:700,fontSize:12}},sevIcon[sev]),
+              e('span',{style:{color:sevColor[sev],fontSize:11}},count+' '+labels[sev]+(count!==1?'s':''))
+            );
+          })
+        ),
+        e('div',{style:{display:'grid',gap:8}},
+          diagIssues.map((issue,i)=>e('div',{key:i,style:{background:C.bg,border:`1px solid ${sevColor[issue.sev]}33`,borderRadius:10,padding:12}},
+            e('div',{style:{display:'flex',gap:8,marginBottom:4}},
+              e('span',{style:{color:sevColor[issue.sev],fontWeight:800,fontSize:12,flexShrink:0}},sevIcon[issue.sev]),
+              e('div',null,
+                e('div',{style:{color:C.text,fontSize:12,fontWeight:600}},issue.text),
+                e('div',{style:{color:C.dim,fontSize:10,marginTop:3}},e('span',{style:{color:sevColor[issue.sev],opacity:.7}},issue.cat),' · '+issue.fix)
+              )
+            )
+          ))
+        )
       )
     ),
-    msg && e('div',{style:{background:msg.startsWith('✓')?C.green+'22':C.red+'22',border:`1px solid ${msg.startsWith('✓')?C.green:C.red}44`,borderRadius:8,padding:'8px 12px',color:msg.startsWith('✓')?C.green:C.red,fontSize:12}},msg),
-    e('button',{onClick:onClose,style:{marginTop:14,width:'100%',background:'transparent',border:`1px solid ${C.border}`,color:C.dim,borderRadius:9,padding:'9px 0',cursor:'pointer',fontSize:12,fontFamily:'inherit'}},'Tancar')
+
+    e('button',{onClick:onClose,style:{marginTop:16,width:'100%',background:'transparent',border:`1px solid ${C.border}`,color:C.dim,borderRadius:9,padding:'9px 0',cursor:'pointer',fontSize:12,fontFamily:'inherit'}},'Tancar')
   );
 }
 
@@ -1174,7 +1431,14 @@ function App() {
   // Desa en cada canvi
   useEffect(()=>{
     setSaveStatus('saving');
-    const t=setTimeout(()=>{save(data);setSaveStatus('ok');},500);
+    const t=setTimeout(async()=>{
+      save(data);
+      setSaveStatus('ok');
+      // Auto-desar a Drive si està configurat i autenticat
+      if(GD_CLIENT_ID && window.gapi?.auth2?.getAuthInstance()?.isSignedIn?.get()) {
+        gdSave(JSON.stringify(data,null,2)).catch(()=>{});
+      }
+    },800);
     return ()=>clearTimeout(t);
   },[data]);
 
