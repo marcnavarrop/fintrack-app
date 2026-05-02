@@ -275,15 +275,18 @@ function Select({label,value,onChange,options}) {
   );
 }
 
-function StatBox({label,value,sub,color=C.accent,icon}) {
-  return e(Card,null,
+function StatBox({label,value,sub,color=C.accent,icon,onClick}) {
+  return e(Card,{onClick,style:{cursor:onClick?'pointer':'default'}},
     e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}},
       e('div',null,
         e('div',{style:{color:C.dim,fontSize:10,fontWeight:600,letterSpacing:.8,textTransform:'uppercase',marginBottom:3}},label),
         e('div',{style:{color,fontSize:18,fontWeight:800,fontFamily:"'DM Mono',monospace"}},value),
         sub && e('div',{style:{color:C.dim,fontSize:10,marginTop:2}},sub)
       ),
-      icon && e('div',{style:{fontSize:20,opacity:.6}},icon)
+      e('div',{style:{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4}},
+        icon && e('div',{style:{fontSize:20,opacity:.6}},icon),
+        onClick && e('div',{style:{color:C.accent,fontSize:9,opacity:.7}},'veure →')
+      )
     )
   );
 }
@@ -352,7 +355,8 @@ function Dashboard({data,setData}) {
   const totalInv = data.inversions.reduce((s,i)=>s+i.valor,0);
   const totalBens = data.bens.reduce((s,b)=>s+b.valorActual,0);
   const totalDeute = data.bens.reduce((s,b)=>s+(b.deute||0),0);
-  const totalFixes = data.gastosFixes.reduce((s,g)=>s+g.import,0);
+  const iMensual = g => g.periodicitat==='anual' ? g.import/12 : g.import;
+  const totalFixes = data.gastosFixes.reduce((s,g)=>s+iMensual(g),0);
   const totalVars = Object.values(data.historialVariables?.[mesKey()]||{}).reduce((s,v)=>s+v,0);
   const estalvi = data.ingressos - totalFixes - totalVars;
   const patrimoni = totalInv + totalBens - totalDeute;
@@ -423,10 +427,11 @@ function Dashboard({data,setData}) {
     ),
     // Stats grid
     e('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:9,marginBottom:12}},
-      e(StatBox,{label:'Gastos totals',value:e(Money,null,fmt(totalFixes+totalVars)),sub:'aquest mes',color:C.red,icon:'💸'}),
-      e(StatBox,{label:'Estalvi net',value:e(Money,null,fmt(estalvi)),color:estalvi>0?C.green:C.red,icon:'🏦'}),
-      e(StatBox,{label:'Inversions',value:e(Money,null,fmt(totalInv)),sub:e('span',null,`${guanyInv>=0?'+':''}`,e(Money,null,fmt(guanyInv))),color:C.accent,icon:'📈'}),
-      e(StatBox,{label:'Béns nets',value:e(Money,null,fmt(totalBens-totalDeute)),color:C.purple,icon:'🏛️'})
+      e(StatBox,{label:'Fixes',value:e(Money,null,fmt(totalFixes)),sub:'mensual',color:C.red,icon:'📌',onClick:()=>setTab('fixes')}),
+      e(StatBox,{label:'Variables',value:e(Money,null,fmt(totalVars)),sub:mesLabel(mesKey()),color:C.orange,icon:'📊',onClick:()=>setTab('variables')}),
+      e(StatBox,{label:'Estalvi net',value:e(Money,null,fmt(estalvi)),sub:estalvi>0?'superavit':'deficit',color:estalvi>0?C.green:C.red,icon:'🏦'}),
+      e(StatBox,{label:'Inversions',value:e(Money,null,fmt(totalInv)),sub:e('span',null,(guanyInv>=0?'+':''),e(Money,null,fmt(guanyInv))),color:C.accent,icon:'📈',onClick:()=>setTab('inversions')}),
+      e(StatBox,{label:'Béns nets',value:e(Money,null,fmt(totalBens-totalDeute)),color:C.purple,icon:'🏛️',onClick:()=>setTab('bens')})
     ),
     // Charts
     e('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}},
@@ -672,6 +677,8 @@ function GastosVariables({data,setData}) {
   const [form,setForm]=useState({nom:'',pressupost:''});
   const [errs,setErrs]=useState({});
   const [editCat,setEditCat]=useState(null);
+  const [varForm,setVarForm]=useState({cat:'',import:'',actiu:''});
+  const [varErr,setVarErr]=useState({});
 
   const mesDades=hist[mesActiu]||{};
   const cats=[...new Set([...Object.keys(pressupostos),...Object.keys(mesDades)])].sort();
@@ -693,7 +700,10 @@ function GastosVariables({data,setData}) {
           e('span',{style:{color:C.dim,fontSize:13}},' / ',e(Money,null,fmt(totalP)))
         )
       ),
-      e(Btn,{onClick:()=>{setForm({nom:'',pressupost:''});setErrs({});setModal('nouCat')}},'+ Categoria')
+      e('div',{style:{display:'flex',gap:6}},
+        e(Btn,{onClick:()=>{setModal('nouGasto');}},'+ Despesa'),
+        e(Btn,{onClick:()=>{setForm({nom:'',pressupost:''});setErrs({});setModal('nouCat');},secondary:true},'+ Categoria')
+      )
     ),
     // Navegació mensual
     e('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:14}},
@@ -776,6 +786,55 @@ function GastosVariables({data,setData}) {
       })
     ),
     // Modals
+    modal==='nouGasto' && e(Modal,{title:'Nova despesa',onClose:()=>setModal(null)},
+      e('div',{style:{marginBottom:12}},
+        e('div',{style:{color:C.dim,fontSize:10,fontWeight:600,marginBottom:7,textTransform:'uppercase'}},'Categoria'),
+        cats.length===0
+          ? e('div',{style:{color:C.dim,fontSize:12}},'Crea primer una categoria.')
+          : e('div',{style:{display:'flex',gap:5,flexWrap:'wrap'}},
+              cats.map(cat=>e('button',{key:cat,onClick:()=>setVarForm(f=>({...f,cat,actiu:''})),style:{
+                background:varForm.cat===cat?colorPerCat(cat)+'33':'transparent',
+                color:varForm.cat===cat?colorPerCat(cat):C.dim,
+                border:'1px solid '+(varForm.cat===cat?colorPerCat(cat)+'66':C.border),
+                borderRadius:7,padding:'6px 12px',cursor:'pointer',fontSize:12,fontFamily:'inherit',fontWeight:600
+              }},cat))
+            ),
+        varErr.cat && e('div',{style:{color:C.red,fontSize:10,marginTop:4}},varErr.cat)
+      ),
+      varForm.cat==='Inversions' && data.inversions.length>0 && e('div',{style:{marginBottom:12}},
+        e('div',{style:{color:C.dim,fontSize:10,fontWeight:600,marginBottom:7,textTransform:'uppercase'}},'Quin actiu?'),
+        e('div',{style:{display:'flex',gap:5,flexWrap:'wrap'}},
+          data.inversions.map(inv=>e('button',{key:inv.id,onClick:()=>setVarForm(f=>({...f,actiu:inv.nom,activId:inv.id})),style:{
+            background:varForm.actiu===inv.nom?inv.color+'33':'transparent',
+            color:varForm.actiu===inv.nom?inv.color:C.dim,
+            border:'1px solid '+(varForm.actiu===inv.nom?inv.color+'66':C.border),
+            borderRadius:7,padding:'5px 10px',cursor:'pointer',fontSize:11,fontFamily:'inherit',fontWeight:600
+          }},inv.nom+(inv.ticker?' ('+inv.ticker+')':'')))
+        )
+      ),
+      e(Input,{label:'Import (€)',type:'number',value:varForm.import,
+        onChange:v=>setVarForm(f=>({...f,import:v})),
+        placeholder:'0.00',error:varErr.import}),
+      e(RowBtns,{
+        onSave:()=>{
+          const er2={};
+          if(!varForm.cat)er2.cat='Selecciona una categoria';
+          if(!varForm.import||isNaN(varForm.import)||+varForm.import<=0)er2.import='Import vàlid';
+          if(Object.keys(er2).length){setVarErr(er2);return;}
+          const v=Math.round(+varForm.import*100)/100;
+          const prev=(data.historialVariables?.[mesActiu]?.[varForm.cat])||0;
+          setData(d=>{
+            const nd={...d,historialVariables:{...(d.historialVariables||{}),[mesActiu]:{...(d.historialVariables?.[mesActiu]||{}),[varForm.cat]:Math.round((prev+v)*100)/100}}};
+            if(varForm.cat==='Inversions'&&varForm.activId){
+              nd.inversions=nd.inversions.map(i=>String(i.id)===String(varForm.activId)?{...i,valor:Math.round((i.valor+v)*100)/100,cost:Math.round((i.cost+v)*100)/100}:i);
+            }
+            return nd;
+          });
+          setModal(null);setVarForm({cat:'',import:'',actiu:''});
+        },
+        onCancel:()=>setModal(null)
+      })
+    ),
     modal==='nouCat' && e(Modal,{title:'Nova categoria',onClose:()=>setModal(null)},
       e(Input,{label:'Nom',value:form.nom,onChange:v=>setForm(f=>({...f,nom:v})),placeholder:'Ex: Restaurants',error:errs.nom}),
       e(Input,{label:'Pressupost mensual (€)',type:'number',value:form.pressupost,onChange:v=>setForm(f=>({...f,pressupost:v})),error:errs.pressupost}),
@@ -879,6 +938,8 @@ function Inversions({data,setData}) {
   const [errs,setErrs]=useState({});
   const [refreshingAll,setRefreshingAll]=useState(false);
   const [refreshLog,setRefreshLog]=useState('');
+  const [filtreInv,setFiltreInv]=useState('Tots');
+  const [sortDesc,setSortDesc]=useState(true);
 
   const total=data.inversions.reduce((s,i)=>s+i.valor,0);
   const totalCost=data.inversions.reduce((s,i)=>s+i.cost,0);
@@ -951,9 +1012,27 @@ function Inversions({data,setData}) {
         )
       )
     ),
+    // Filtre + ordenació
+    e('div',{style:{display:'flex',gap:5,marginBottom:10,flexWrap:'wrap',alignItems:'center'}},
+      ['Tots','ETF','Fons','Accions','Cripto','Pensions','Bons','Altres'].map(t=>
+        e('button',{key:t,onClick:()=>setFiltreInv(t),style:{
+          background:filtreInv===t?(TIPUS_COLORS[t]||C.accent)+'33':'transparent',
+          color:filtreInv===t?(TIPUS_COLORS[t]||C.accent):C.dim,
+          border:'1px solid '+(filtreInv===t?(TIPUS_COLORS[t]||C.accent)+'66':C.border),
+          borderRadius:7,padding:'4px 10px',cursor:'pointer',fontSize:10,fontFamily:'inherit',fontWeight:600
+        }},t)
+      ),
+      e('button',{onClick:()=>setSortDesc(s=>!s),style:{
+        marginLeft:'auto',background:'transparent',border:'1px solid '+C.border,
+        color:C.dim,borderRadius:7,padding:'4px 10px',cursor:'pointer',fontSize:10,fontFamily:'inherit'
+      }},sortDesc?'↓ Major valor':'↑ Menor valor')
+    ),
     e('div',{style:{display:'grid',gap:7}},
       data.inversions.length===0 && e('div',{style:{color:C.dim,fontSize:12,textAlign:'center',padding:24}},'Cap inversió. Afegeix-ne una!'),
-      data.inversions.map(inv=>e(InvCard,{key:inv.id,inv,onEdit:()=>obrir(inv),
+      [...data.inversions]
+        .filter(inv=>filtreInv==='Tots'||inv.tipus===filtreInv)
+        .sort((a,b)=>sortDesc?b.valor-a.valor:a.valor-b.valor)
+        .map(inv=>e(InvCard,{key:inv.id,inv,onEdit:()=>obrir(inv),
         onValorChange:v=>setData(d=>({...d,inversions:d.inversions.map(i=>i.id===inv.id?{...i,valor:v}:i)})),
         onDelete:()=>setData(d=>({...d,inversions:d.inversions.filter(x=>x.id!==inv.id)}))
       }))
@@ -1499,7 +1578,8 @@ function BackupModal({data,setData,onClose}) {
     // Tabs
     e('div',{style:{display:'flex',borderBottom:'1px solid '+C.border,marginBottom:18,marginTop:-6}},
       tabBtn('drive','☁️ Supabase'),
-      tabBtn('diagnostic','🔍 Diagnòstic')
+      tabBtn('diagnostic','🔍 Diagnòstic'),
+      tabBtn('dades','🗑️ Dades')
     ),
 
     // ── SUPABASE TAB ──
@@ -1561,6 +1641,26 @@ function BackupModal({data,setData,onClose}) {
       )
     ),
 
+    tab==='dades' && e('div',null,
+      e('div',{style:{background:C.red+'11',border:'1px solid '+C.red+'33',borderRadius:12,padding:18,marginBottom:12}},
+        e('div',{style:{fontWeight:700,color:C.red,fontSize:13,marginBottom:6}},'Zona de perill'),
+        e('div',{style:{color:C.dim,fontSize:12,lineHeight:1.6,marginBottom:14}},
+          'Aquesta accio esborrar TOTES les dades permanentment. Assegura-te de tenir backup primer.'
+        ),
+        e('button',{
+          onClick:async()=>{
+            if(window.confirm('Segur que vols esborrar TOTES les dades?')){
+              if(window.confirm('Confirma: esborrar tot definitament?')){
+                setData(INIT);
+                try{await SB_SAVE(INIT);}catch{}
+                onClose();
+              }
+            }
+          },
+          style:{width:'100%',background:C.red,color:'#fff',border:'none',borderRadius:10,padding:'12px 0',fontWeight:800,fontSize:13,cursor:'pointer',fontFamily:'inherit'}
+        },'Esborrar totes les dades')
+      )
+    ),
     e('button',{onClick:onClose,style:{marginTop:16,width:'100%',background:'transparent',border:`1px solid ${C.border}`,color:C.dim,borderRadius:9,padding:'9px 0',cursor:'pointer',fontSize:12,fontFamily:'inherit'}},'Tancar')
   );
 }
@@ -1654,7 +1754,6 @@ function App() {
 
   const [hBlur,setHBlur]=useState(false);
   const [hBackup,setHBackup]=useState(false);
-  const [hReset,setHReset]=useState(false);
 
   if(!loaded) return e('div',{style:{minHeight:'100vh',background:C.bg,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:14,fontFamily:"'Sora',sans-serif"}},
     e('div',{style:{fontSize:26,fontWeight:900}},e('span',{style:{color:C.accent}},'fin'),e('span',{style:{color:C.white}},'track')),
@@ -1699,13 +1798,7 @@ function App() {
             title:'Mode '+(theme==='dark'?'clar':'fosc'),
             style:{background:'transparent',border:'1px solid '+C.border,color:C.dim,borderRadius:7,width:32,height:32,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,transition:'all .2s'}
           },theme==='dark'?'☀️':'🌙'),
-          // Reset
-          e('button',{
-            onClick:()=>{if(window.confirm("Reiniciar totes les dades? Perdràs tot el que no hagis fet backup.")){setData(INIT);setUserHasEdited(false);localStorage.removeItem(KEY);try{sbSave(INIT);}catch{}}},
-            onMouseEnter:()=>setHReset(true),onMouseLeave:()=>setHReset(false),
-            title:'Reiniciar dades',
-            style:{background:'transparent',border:'1px solid '+(hReset?C.red+'66':C.border),color:hReset?C.red:C.dim,borderRadius:7,width:32,height:32,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,transition:'all .2s'}
-          },'↺')
+          // Reset removed - see backup modal Dades tab
         )
       ),
       // Tabs
@@ -1730,7 +1823,7 @@ function App() {
       ),
       // Content
       e('div',{style:{padding:'16px 14px'}},
-        tab==='dashboard' && e(Dashboard,{data,setData:setDataSafe}),
+        tab==='dashboard' && e(Dashboard,{data,setData:setDataSafe,setTab}),
         tab==='fixes' && e(GastosFixes,{data,setData:setDataSafe}),
         tab==='variables' && e(GastosVariables,{data,setData:setDataSafe}),
         tab==='inversions' && e(Inversions,{data,setData:setDataSafe}),
