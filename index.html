@@ -1823,6 +1823,8 @@ function runDiagnostic(data) {
 }
 
 // ── PIN CHANGE ───────────────────────────────────────────────────────────────
+const DEFAULT_PIN = '1234';
+
 function PinChange({onSavePin=()=>{}, currentPin=DEFAULT_PIN}) {
   const [step,setStep] = useState('current'); // current | new | confirm
   const [current,setCurrent] = useState('');
@@ -2052,8 +2054,6 @@ function BackupModal({data,setData,onClose}) {
 
 
 // ── PIN SCREEN ────────────────────────────────────────────────────────────────
-const DEFAULT_PIN = '1234';
-
 function PinScreen({onUnlock, correctPin}) {
   const [digits,setDigits] = useState('');
   const [error,setError] = useState(false);
@@ -2065,7 +2065,7 @@ function PinScreen({onUnlock, correctPin}) {
     setDigits(next);
     setError(false);
     if(next.length===4){
-      const stored = localStorage.getItem('fintrack-pin')||DEFAULT_PIN;
+      const stored = correctPin||DEFAULT_PIN;
       if(next===stored){
         onUnlock();
       } else {
