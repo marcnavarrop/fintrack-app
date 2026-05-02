@@ -970,83 +970,159 @@ function Inversions({data,setData}) {
 }
 
 // ── BÉNS ──────────────────────────────────────────────────────────────────────
+// Config per tipus: [icona, mostra_compra, mostra_deute, label_deute, label_fi, badge_color]
+const BENS_CFG = {
+  'Immoble':    ['🏠', true,  true,  'Hipoteca pendent', 'Fi hipoteca',  C.purple],
+  'Vehicle':    ['🚗', true,  true,  'Prestec pendent',  'Fi prestec',   C.orange],
+  'Prestec':    ['📄', false, true,  'Capital pendent',  'Fi prestec',   C.red],
+  'Compte':     ['💰', false, false, '',                 '',             C.green],
+  'Col·leccio': ['🎨', true,  false, '',                 '',             C.yellow],
+  'Electronica':['💻', true,  false, '',                 '',             C.accent],
+  'Altres':     ['📦', true,  false, '',                 '',             C.dim],
+};
+
 function Bens({data,setData}) {
   const [modal,setModal]=useState(null);
-  const empty={nom:'',tipus:'Immoble',valorActual:'',valorCompra:'',deute:'',mensualitat:'',anysFi:'',icona:'🏠'};
-  const [form,setForm]=useState(empty);
+  const emptyBe={nom:'',tipus:'Immoble',valorActual:'',valorCompra:'',deute:'',mensualitat:'',anysFi:'',icona:'🏠'};
+  const [form,setForm]=useState(emptyBe);
   const [errs,setErrs]=useState({});
-  const totalActius=data.bens.reduce((s,b)=>s+b.valorActual,0);
-  const totalDeute=data.bens.reduce((s,b)=>s+(b.deute||0),0);
+
+  const totalActius = data.bens.reduce((s,b)=>s+b.valorActual,0);
+  const totalDeute  = data.bens.reduce((s,b)=>s+(b.deute||0),0);
+  const totalNet    = totalActius - totalDeute;
 
   const obrir=(b)=>{
-    if(b==='nou'){setForm(empty);setErrs({});setModal('nou');}
-    else{setForm({nom:b.nom,tipus:b.tipus,valorActual:String(b.valorActual),valorCompra:String(b.valorCompra),deute:String(b.deute||0),mensualitat:String(b.mensualitat||0),anysFi:b.anysFi||'',icona:b.icona||'📦'});setErrs({});setModal(b.id);}
+    if(b==='nou'){
+      setForm(emptyBe);setErrs({});setModal('nou');
+    } else {
+      setForm({nom:b.nom,tipus:b.tipus,valorActual:String(b.valorActual),
+        valorCompra:String(b.valorCompra||''),deute:String(b.deute||0),
+        mensualitat:String(b.mensualitat||0),anysFi:b.anysFi||'',icona:b.icona||'📦'});
+      setErrs({});setModal(b.id);
+    }
   };
+
   const desar=()=>{
-    const er={};if(!form.nom.trim())er.nom='Obligatori';if(!form.valorActual||isNaN(form.valorActual)||+form.valorActual<0)er.valorActual='Import vàlid';
+    const er={};
+    if(!form.nom.trim())er.nom='Obligatori';
+    if(!form.valorActual||isNaN(form.valorActual)||+form.valorActual<0)er.valorActual='Import vàlid';
     if(Object.keys(er).length){setErrs(er);return;}
-    const item={id:modal==='nou'?uid():modal,nom:form.nom.trim(),tipus:form.tipus,valorActual:+form.valorActual,valorCompra:+form.valorCompra||+form.valorActual,deute:+form.deute||0,mensualitat:+form.mensualitat||0,anysFi:form.anysFi.trim(),icona:form.icona||'📦'};
+    const cfg = BENS_CFG[form.tipus]||BENS_CFG['Altres'];
+    const item={
+      id:modal==='nou'?uid():modal,
+      nom:form.nom.trim(),
+      tipus:form.tipus,
+      valorActual:+form.valorActual,
+      valorCompra:cfg[1]?(+form.valorCompra||+form.valorActual):0,
+      deute:cfg[2]?(+form.deute||0):0,
+      mensualitat:cfg[2]?(+form.mensualitat||0):0,
+      anysFi:cfg[2]?form.anysFi.trim():'',
+      icona:form.icona||cfg[0]
+    };
     setData(d=>({...d,bens:modal==='nou'?[...d.bens,item]:d.bens.map(b=>b.id===modal?item:b)}));
     setModal(null);
   };
 
+  // Quan canvia el tipus, actualitza la icona per defecte si era la icona per defecte
+  const onTipusChange = (t) => {
+    const oldCfg = BENS_CFG[form.tipus]||BENS_CFG['Altres'];
+    const newCfg = BENS_CFG[t]||BENS_CFG['Altres'];
+    const icona = form.icona===oldCfg[0] ? newCfg[0] : form.icona;
+    setForm(f=>({...f,tipus:t,icona}));
+  };
+
   return e('div',null,
+    // Header resum
     e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}},
       e('div',null,
-        e('div',{style:{color:C.dim,fontSize:10,letterSpacing:1}},'TOTAL ACTIUS FÍSICS'),
-        e('div',{style:{color:C.purple,fontSize:24,fontWeight:800,fontFamily:'monospace'}},e(Money,null,fmt(totalActius))),
-        totalDeute>0 && e('div',{style:{color:C.red,fontSize:10}},'Deute: ',e(Money,null,fmt(totalDeute)))
+        e('div',{style:{color:C.dim,fontSize:10,letterSpacing:1}},'PATRIMONI NET'),
+        e('div',{style:{color:C.purple,fontSize:24,fontWeight:800,fontFamily:'monospace'}},e(Money,null,fmt(totalNet))),
+        e('div',{style:{display:'flex',gap:12,marginTop:2}},
+          e('span',{style:{color:C.dim,fontSize:10}},'Actius: ',e('span',{style:{color:C.text,fontWeight:700}},e(Money,null,fmt(totalActius)))),
+          totalDeute>0 && e('span',{style:{color:C.dim,fontSize:10}},'Deutes: ',e('span',{style:{color:C.red,fontWeight:700}},e(Money,null,fmt(totalDeute))))
+        )
       ),
       e(Btn,{onClick:()=>obrir('nou')},'+ Afegir')
     ),
+
+    // Llista de béns
     e('div',{style:{display:'grid',gap:10}},
       data.bens.length===0 && e('div',{style:{color:C.dim,fontSize:12,textAlign:'center',padding:24}},'Cap bé registrat. Afegeix-ne un!'),
       data.bens.map(b=>{
-        const g=b.valorActual-b.valorCompra; const pg=gainPct(b.valorActual,b.valorCompra);
-        const eq=b.valorActual-(b.deute||0);
+        const cfg = BENS_CFG[b.tipus]||BENS_CFG['Altres'];
+        const [icoDef, mostraCompra, mostraDeute, labelDeute, labelFi, badgeColor] = cfg;
+        const eq = b.valorActual-(b.deute||0);
+        const g  = mostraCompra ? b.valorActual-(b.valorCompra||b.valorActual) : 0;
+        const pg = mostraCompra ? gainPct(b.valorActual, b.valorCompra||b.valorActual) : 0;
+
         return e(Card,{key:b.id,onClick:()=>obrir(b)},
-          e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:b.deute>0?10:0}},
+          // Capçalera
+          e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:(b.deute>0&&mostraDeute)?10:0}},
             e('div',{style:{display:'flex',alignItems:'center',gap:9}},
-              e('div',{style:{fontSize:24}},b.icona),
+              e('div',{style:{fontSize:24}},b.icona||icoDef),
               e('div',null,
                 e('div',{style:{fontWeight:700,color:C.text,fontSize:13}},b.nom),
-                e(Badge,{color:C.purple},b.tipus)
+                e(Badge,{color:badgeColor},b.tipus)
               )
             ),
             e('div',{style:{display:'flex',alignItems:'center',gap:9}},
               e('div',{style:{textAlign:'right'}},
                 e('div',{style:{color:C.text,fontFamily:'monospace',fontWeight:700,fontSize:15}},e(Money,null,fmt(b.valorActual))),
-                e('div',{style:{color:g>=0?C.green:C.red,fontSize:10,fontFamily:'monospace'}},e(Money,null,`${g>=0?'+':''}${fmt(g)} (${pg.toFixed(1)}%)`))
+                mostraCompra && b.valorCompra>0 && e('div',{style:{color:g>=0?C.green:C.red,fontSize:10,fontFamily:'monospace'}},
+                  e(Money,null,(g>=0?'+':'')+fmt(g)+' ('+pg.toFixed(1)+'%)')
+                )
               ),
               e(DeleteBtn,{nom:b.nom,onDelete:()=>setData(d=>({...d,bens:d.bens.filter(x=>x.id!==b.id)}))})
             )
           ),
-          b.deute>0 && e('div',{style:{background:C.bg,borderRadius:9,padding:10}},
-            e('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:7}},
-              e('div',null,e('div',{style:{color:C.dim,fontSize:9}},'Deute pendent'),e('div',{style:{color:C.red,fontFamily:'monospace',fontWeight:700,fontSize:11}},e(Money,null,fmt(b.deute)))),
-              e('div',null,e('div',{style:{color:C.dim,fontSize:9}},'Equitat neta'),e('div',{style:{color:C.green,fontFamily:'monospace',fontWeight:700,fontSize:11}},e(Money,null,fmt(eq)))),
-              b.mensualitat>0 && e('div',null,e('div',{style:{color:C.dim,fontSize:9}},'Mensualitat'),e('div',{style:{color:C.yellow,fontFamily:'monospace',fontWeight:700,fontSize:11}},e(Money,null,fmt(b.mensualitat)),'/m'))
+          // Secció deute (hipoteca / prestec)
+          mostraDeute && b.deute>0 && e('div',{style:{background:C.bg,borderRadius:9,padding:10}},
+            e('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr '+(b.mensualitat>0?'1fr':''),gap:8,marginBottom:7}},
+              e('div',null,
+                e('div',{style:{color:C.dim,fontSize:9}},labelDeute||'Pendent'),
+                e('div',{style:{color:C.red,fontFamily:'monospace',fontWeight:700,fontSize:11}},e(Money,null,fmt(b.deute)))
+              ),
+              e('div',null,
+                e('div',{style:{color:C.dim,fontSize:9}},'Equitat neta'),
+                e('div',{style:{color:C.green,fontFamily:'monospace',fontWeight:700,fontSize:11}},e(Money,null,fmt(eq)))
+              ),
+              b.mensualitat>0 && e('div',null,
+                e('div',{style:{color:C.dim,fontSize:9}},'Mensualitat'),
+                e('div',{style:{color:C.yellow,fontFamily:'monospace',fontWeight:700,fontSize:11}},e(Money,null,fmt(b.mensualitat)),'/m')
+              )
             ),
-            e(ProgressBar,{value:b.valorActual-eq,max:b.valorActual,color:C.purple,height:4}),
+            b.valorActual>0 && e(ProgressBar,{value:eq,max:b.valorActual,color:badgeColor,height:4}),
             e('div',{style:{display:'flex',justifyContent:'space-between',marginTop:3}},
-              e('span',{style:{color:C.dim,fontSize:9}},`Pagat: ${((eq/b.valorActual)*100).toFixed(0)}%`),
-              b.anysFi && e('span',{style:{color:C.dim,fontSize:9}},`Fi hipoteca: ${b.anysFi}`)
+              b.valorActual>0 && e('span',{style:{color:C.dim,fontSize:9}},'Pagat: '+((eq/b.valorActual)*100).toFixed(0)+'%'),
+              b.anysFi && e('span',{style:{color:C.dim,fontSize:9}},(labelFi||'Fi')+': '+b.anysFi)
             )
           )
         );
       })
     ),
-    modal && e(Modal,{title:modal==='nou'?'Nou bé':'Editar bé',onClose:()=>setModal(null)},
+
+    // Modal
+    modal && e(Modal,{title:modal==='nou'?'Nou element':'Editar element',onClose:()=>setModal(null)},
       e('div',{style:{display:'grid',gridTemplateColumns:'55px 1fr',gap:7}},
         e(Input,{label:'Emoji',value:form.icona,onChange:v=>setForm(f=>({...f,icona:v}))}),
-        e(Input,{label:'Nom',value:form.nom,onChange:v=>setForm(f=>({...f,nom:v})),placeholder:'Ex: Pis principal',error:errs.nom})
+        e(Input,{label:'Nom',value:form.nom,onChange:v=>setForm(f=>({...f,nom:v})),
+          placeholder:form.tipus==='Compte'?'Ex: Compte corrent':form.tipus==='Prestec'?'Ex: Prestec personal':'Ex: Pis principal',
+          error:errs.nom})
       ),
-      e(Select,{label:'Tipus',value:form.tipus,onChange:v=>setForm(f=>({...f,tipus:v})),options:['Immoble','Vehicle',"Col·lecció",'Electrònica','Altres']}),
-      e(Input,{label:'Valor actual (€)',type:'number',value:form.valorActual,onChange:v=>setForm(f=>({...f,valorActual:v})),error:errs.valorActual}),
-      e(Input,{label:'Valor de compra (€)',type:'number',value:form.valorCompra,onChange:v=>setForm(f=>({...f,valorCompra:v}))}),
-      e(Input,{label:'Deute pendent (€)',type:'number',value:form.deute,onChange:v=>setForm(f=>({...f,deute:v}))}),
-      e(Input,{label:'Mensualitat (€)',type:'number',value:form.mensualitat,onChange:v=>setForm(f=>({...f,mensualitat:v}))}),
-      e(Input,{label:'Any fi del deute',value:form.anysFi,onChange:v=>setForm(f=>({...f,anysFi:v})),placeholder:'Ex: 2041'}),
+      e(Select,{label:'Tipus',value:form.tipus,onChange:onTipusChange,
+        options:['Immoble','Vehicle','Prestec','Compte','Col·leccio','Electronica','Altres']}),
+      e(Input,{label:form.tipus==='Compte'?'Saldo actual (€)':'Valor actual (€)',
+        type:'number',value:form.valorActual,onChange:v=>setForm(f=>({...f,valorActual:v})),error:errs.valorActual}),
+      // Camps condicionals per tipus
+      (BENS_CFG[form.tipus]||BENS_CFG['Altres'])[1] &&
+        e(Input,{label:'Valor de compra (€)',type:'number',value:form.valorCompra,onChange:v=>setForm(f=>({...f,valorCompra:v}))}),
+      (BENS_CFG[form.tipus]||BENS_CFG['Altres'])[2] && e('div',null,
+        e(Input,{label:(BENS_CFG[form.tipus]||BENS_CFG['Altres'])[3]||'Deute pendent (€)',
+          type:'number',value:form.deute,onChange:v=>setForm(f=>({...f,deute:v}))}),
+        e(Input,{label:'Mensualitat (€)',type:'number',value:form.mensualitat,onChange:v=>setForm(f=>({...f,mensualitat:v}))}),
+        e(Input,{label:(BENS_CFG[form.tipus]||BENS_CFG['Altres'])[4]?((BENS_CFG[form.tipus]||BENS_CFG['Altres'])[4]+' (any)'):null,
+          value:form.anysFi,onChange:v=>setForm(f=>({...f,anysFi:v})),placeholder:'Ex: 2041'})
+      ),
       e(RowBtns,{onSave:desar,onCancel:()=>setModal(null)})
     )
   );
