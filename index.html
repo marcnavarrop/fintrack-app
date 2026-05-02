@@ -163,10 +163,31 @@ function AreaChartSimple({data, height=130}) {
 
 
 
-// ── Storage ──────────────────────────────────────────────────────────────────
-const KEY = 'fintrack-v1';
-const save = d => { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch{} };
-const load = () => { try { const s=localStorage.getItem(KEY); return s?JSON.parse(s):null; } catch{return null;} };
+// ── Supabase Storage (única font de veritat) ─────────────────────────────────
+const SB_LOAD = async () => {
+  const r = await fetch(SB_URL+'/rest/v1/'+SB_TABLE+'?id=eq.'+SB_ROW_ID+'&select=data,updated_at', {
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
+  });
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const rows = await r.json();
+  if(!rows.length || !rows[0].data) return null;
+  return JSON.parse(rows[0].data);
+};
+
+const SB_SAVE = async (d) => {
+  const r = await fetch(SB_URL+'/rest/v1/'+SB_TABLE, {
+    method:'POST',
+    headers:{
+      'apikey':SB_KEY,
+      'Authorization':'Bearer '+SB_KEY,
+      'Content-Type':'application/json',
+      'Prefer':'resolution=merge-duplicates'
+    },
+    body: JSON.stringify({id:SB_ROW_ID, data:JSON.stringify(d), updated_at:new Date().toISOString()})
+  });
+  if(!r.ok) { const e=await r.text(); throw new Error(e); }
+  return true;
+};
 
 // ── Utils ────────────────────────────────────────────────────────────────────
 const fmt = (n,d=0) => new Intl.NumberFormat('ca-ES',{style:'currency',currency:'EUR',minimumFractionDigits:d,maximumFractionDigits:d}).format(n??0);
@@ -1229,43 +1250,6 @@ const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 const SB_TABLE = 'fintrack_data';
 const SB_ROW_ID = 1; // Fila única per usuari
 
-async function sbSave(data) {
-  try {
-    const json = JSON.stringify(data);
-    const resp = await fetch(SB_URL + '/rest/v1/' + SB_TABLE, {
-      method: 'POST',
-      headers: {
-        'apikey': SB_KEY,
-        'Authorization': 'Bearer ' + SB_KEY,
-        'Content-Type': 'application/json',
-        'Prefer': 'resolution=merge-duplicates'
-      },
-      body: JSON.stringify({ id: SB_ROW_ID, data: json, updated_at: new Date().toISOString() })
-    });
-    if(!resp.ok) { const e = await resp.text(); throw new Error(e); }
-    return { ok: true, msg: 'ok Desat a Supabase' };
-  } catch(err) {
-    return { ok: false, msg: 'Error Supabase: ' + err.message };
-  }
-}
-
-async function sbLoad(setData) {
-  try {
-    const resp = await fetch(SB_URL + '/rest/v1/' + SB_TABLE + '?id=eq.' + SB_ROW_ID + '&select=data,updated_at', {
-      headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY }
-    });
-    if(!resp.ok) throw new Error('HTTP ' + resp.status);
-    const rows = await resp.json();
-    if(!rows.length) return { ok: false, msg: 'Cap dada al servidor' };
-    const parsed = JSON.parse(rows[0].data);
-    const ts = new Date(rows[0].updated_at).toLocaleString('ca-ES');
-    setData({ ...INIT, ...parsed });
-    return { ok: true, msg: 'ok Restaurat (' + ts + ')' };
-  } catch(err) {
-    return { ok: false, msg: 'Error: ' + err.message };
-  }
-}
-
 // ── DIAGNOSTIC ────────────────────────────────────────────────────────────────
 function runDiagnostic(data) {
   const issues = [];
@@ -1375,13 +1359,18 @@ function BackupModal({data,setData,onClose}) {
 
   const handleSbSave=async()=>{
     setSbStatus('loading');setSbMsg('Desant...');
-    const r=await sbSave(data);
+    const r2=await SB_SAVE(data); const r={ok:true,msg:"ok Desat a Supabase"};
     setSbStatus(r.ok?'ok':'error');setSbMsg(r.msg);
   };
 
   const handleSbLoad=async()=>{
     setSbStatus('loading');setSbMsg('Carregant...');
-    const r=await sbLoad(setData);
+    let r;
+    try {
+      const d=await SB_LOAD();
+      if(d){setDataSafe({...INIT,...d});r={ok:true,msg:"ok Restaurat de Supabase"};}
+      else r={ok:false,msg:"Cap dada a Supabase"};
+    } catch(e){r={ok:false,msg:"Error: "+e.message};}
     setSbStatus(r.ok?'ok':'error');setSbMsg(r.msg);
     if(r.ok) setTimeout(onClose,1200);
   };
@@ -1502,51 +1491,74 @@ function App() {
   const [theme,setTheme]=useState(()=>localStorage.getItem('fintrack-theme')||'dark');
   const [data,setData]=useState(INIT);
 
-  // Apply theme synchronously before render (not in effect)
+  // Apply theme
   C = theme==='dark' ? {...DARK} : {...LIGHT};
   document.body.style.background = C.bg;
 
-  // ── Carrega inicial: Supabase primer, localStorage com a fallback ──────────
-  const [loaded,setLoaded] = useState(false);
+  // ── Estats de càrrega ─────────────────────────────────────────────────────
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [userHasEdited, setUserHasEdited] = useState(false);
 
+  // ── Càrrega inicial des de Supabase ───────────────────────────────────────
   useEffect(()=>{
     (async()=>{
       try {
-        const resp = await fetch(SB_URL+'/rest/v1/'+SB_TABLE+'?id=eq.'+SB_ROW_ID+'&select=data,updated_at',{
-          headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
-        });
-        if(resp.ok){
-          const rows = await resp.json();
-          if(rows.length && rows[0].data){
-            const parsed = JSON.parse(rows[0].data);
-            if(parsed && typeof parsed.ingressos!=='undefined'){
-              setData({...INIT,...parsed});
-              save({...INIT,...parsed}); // sync to localStorage
-              setLoaded(true);
-              setSaveStatus('ok');
-              return;
-            }
-          }
+        const d = await SB_LOAD();
+        if(d && typeof d.ingressos !== 'undefined') {
+          setData({...INIT,...d});
         }
-      } catch {}
-      // Fallback: localStorage
-      const local = load();
-      if(local) setData(local);
-      setLoaded(true);
+        setLoaded(true);
+      } catch(e) {
+        setLoadError('No es pot connectar a Supabase: '+e.message);
+        setLoaded(true); // mostra app buida amb error
+      }
     })();
   },[]);
 
-  // ── Auto-desa en cada canvi (localStorage + Supabase) ─────────────────────
+  // ── Auto-desa cada canvi a Supabase (debounce 1s) ─────────────────────────
+  const setDataSafe = (updater) => {
+    if(loaded) setUserHasEdited(true);
+    setData(updater);
+  };
+
   useEffect(()=>{
-    if(!loaded) return; // no desis fins que hagin carregat les dades
+    if(!loaded || !userHasEdited) return;
     setSaveStatus('saving');
-    const t=setTimeout(async()=>{
-      save(data); // localStorage
-      try { await sbSave(data); } catch {}
-      setSaveStatus('ok');
-    },800);
+    const t = setTimeout(async()=>{
+      try {
+        await SB_SAVE(data);
+        setSaveStatus('ok');
+      } catch(e) {
+        setSaveStatus('error');
+        console.error('Save error:', e);
+      }
+    }, 1000);
     return ()=>clearTimeout(t);
-  },[data,loaded]);
+  },[data, loaded, userHasEdited]);
+
+  // ── Backup automàtic cada divendres ───────────────────────────────────────
+  useEffect(()=>{
+    if(!loaded || !userHasEdited) return;
+    const now = new Date();
+    const isFriday = now.getDay() === 5;
+    const lastBackup = localStorage.getItem('fintrack-last-backup');
+    const today = now.toISOString().slice(0,10);
+    if(isFriday && lastBackup !== today) {
+      // Auto-download backup
+      setTimeout(()=>{
+        const json = JSON.stringify(data, null, 2);
+        const blob = new Blob([json],{type:'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'fintrack_backup_'+today+'.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        localStorage.setItem('fintrack-last-backup', today);
+      }, 3000);
+    }
+  },[loaded]);
 
   const [hBlur,setHBlur]=useState(false);
   const [hBackup,setHBackup]=useState(false);
@@ -1569,7 +1581,9 @@ function App() {
           e('div',{style:{display:'flex',alignItems:'center',gap:4}},
             e('div',{style:{color:C.dim,fontSize:8,letterSpacing:1.5,textTransform:'uppercase'}},'Gestor financer personal'),
             saveStatus==='saving' && e('span',{style:{color:C.accent,fontSize:8}},' ● desant...'),
-            saveStatus==='ok' && e('span',{style:{color:C.green,fontSize:8}},' ✓ desat')
+            saveStatus==='ok' && e('span',{style:{color:C.green,fontSize:8}},' ✓ desat'),
+            saveStatus==='error' && e('span',{style:{color:C.red,fontSize:8}},' ✗ error desant'),
+            loadError && e('span',{style:{color:C.red,fontSize:8}},' ⚠ '+loadError)
           )
         ),
         e('div',{style:{display:'flex',gap:6,alignItems:'center'}},
@@ -1595,7 +1609,7 @@ function App() {
           },theme==='dark'?'☀️':'🌙'),
           // Reset
           e('button',{
-            onClick:()=>{if(window.confirm("Reiniciar totes les dades? Perdràs tot el que no hagis fet backup.")){setData(INIT);localStorage.removeItem(KEY);}},
+            onClick:()=>{if(window.confirm("Reiniciar totes les dades? Perdràs tot el que no hagis fet backup.")){setData(INIT);setUserHasEdited(false);localStorage.removeItem(KEY);try{sbSave(INIT);}catch{}}},
             onMouseEnter:()=>setHReset(true),onMouseLeave:()=>setHReset(false),
             title:'Reiniciar dades',
             style:{background:'transparent',border:'1px solid '+(hReset?C.red+'66':C.border),color:hReset?C.red:C.dim,borderRadius:7,width:32,height:32,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,transition:'all .2s'}
@@ -1624,14 +1638,14 @@ function App() {
       ),
       // Content
       e('div',{style:{padding:'16px 14px'}},
-        tab==='dashboard' && e(Dashboard,{data,setData}),
-        tab==='fixes' && e(GastosFixes,{data,setData}),
-        tab==='variables' && e(GastosVariables,{data,setData}),
-        tab==='inversions' && e(Inversions,{data,setData}),
-        tab==='bens' && e(Bens,{data,setData}),
-        tab==='fire' && e(Fire,{data,setData})
+        tab==='dashboard' && e(Dashboard,{data,setData:setDataSafe}),
+        tab==='fixes' && e(GastosFixes,{data,setData:setDataSafe}),
+        tab==='variables' && e(GastosVariables,{data,setData:setDataSafe}),
+        tab==='inversions' && e(Inversions,{data,setData:setDataSafe}),
+        tab==='bens' && e(Bens,{data,setData:setDataSafe}),
+        tab==='fire' && e(Fire,{data,setData:setDataSafe})
       ),
-      showBackup && e(BackupModal,{data,setData,onClose:()=>setShowBackup(false)})
+      showBackup && e(BackupModal,{data,setData:setDataSafe,onClose:()=>setShowBackup(false)})
     )
   ));
 }
