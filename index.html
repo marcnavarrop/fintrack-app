@@ -243,7 +243,8 @@ const INIT = {
   ingressos:0,
   cash:0,
   historialNomines:{},
-  snapshotMesos:{}, // {YYYY-MM: import} gastosFixes:[], pressupostosVariables:{}, historialVariables:{},
+  snapshotMesos:{},
+  despesesRegistre:[], // [{id, cat, import, data, mes}] // {YYYY-MM: import} gastosFixes:[], pressupostosVariables:{}, historialVariables:{},
   inversions:[], bens:[], objectius:[], transaccions:[], evolucioPat:[],
   fire:{edatActual:30, despesesAnuals:18000, rendimentEsperatPct:7, inflacio:2.5, reglaPct:4}
 };
@@ -479,13 +480,7 @@ function Dashboard({data,setData,setTab=()=>{}}) {
         !esActual && e('div',{style:{color:C.dim,fontSize:9}},'foto del mes · clica ‹ › per navegar')
       ),
       e('button',{onClick:()=>setMesSelec(mesosDisp[mesIdx+1]),disabled:mesIdx===mesosDisp.length-1,
-        style:{background:'none',border:'1px solid '+C.border,color:mesIdx===mesosDisp.length-1?C.border:C.dim,borderRadius:7,width:28,height:28,cursor:mesIdx===mesosDisp.length-1?'default':'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}},'›'),
-      // Guardar foto manual del mes actual
-      esActual && e('button',{
-        onClick:()=>desarSnapshot(avuiKey),
-        title:'Guardar foto del mes actual',
-        style:{background:C.accentDim,border:'1px solid '+C.accent+'44',color:C.accent,borderRadius:7,padding:'3px 9px',cursor:'pointer',fontSize:10,fontFamily:'inherit',fontWeight:700,marginLeft:4}
-      },'📸 Foto')
+        style:{background:'none',border:'1px solid '+C.border,color:mesIdx===mesosDisp.length-1?C.border:C.dim,borderRadius:7,width:28,height:28,cursor:mesIdx===mesosDisp.length-1?'default':'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}},'›')
     ),
 
     // Hero patrimoni
@@ -918,6 +913,8 @@ function GastosVariables({data,setData}) {
         const over=pressupost>0&&gastat>pressupost;
         const pct=pressupost>0?Math.min(100,(gastat/pressupost)*100):null;
         const col=colorPerCat(cat);
+        const regs = (data.despesesRegistre||[]).filter(r=>r.cat===cat&&r.mes===mesActiu).sort((a,b)=>b.data.localeCompare(a.data));
+        const [obert,setObert] = useState(false);
         return e('div',{key:cat,style:{background:C.surface,border:'1px solid '+(over?C.red+'55':C.border),borderRadius:12,padding:'11px 14px',transition:'border-color .2s'}},
           e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:pct!==null?7:0}},
             e('div',{style:{display:'flex',alignItems:'center',gap:7}},
@@ -946,8 +943,41 @@ function GastosVariables({data,setData}) {
               e(DeleteBtn,{nom:cat,onDelete:()=>setData(d=>{const pp={...(d.pressupostosVariables||{})};delete pp[cat];const h={...(d.historialVariables||{})};Object.keys(h).forEach(m=>{const x={...h[m]};delete x[cat];h[m]=x;});return{...d,pressupostosVariables:pp,historialVariables:h};})})
             )
           ),
-          pct!==null && e('div',{style:{background:C.border,borderRadius:3,height:5,overflow:'hidden'}},
+          pct!==null && e('div',{style:{background:C.border,borderRadius:3,height:5,overflow:'hidden',marginBottom:regs.length>0?6:0}},
             e('div',{style:{width:pct+'%',height:'100%',background:over?C.red:pct>80?C.yellow:col,borderRadius:3,transition:'width .5s'}})
+          ),
+          // Desplegable registres
+          regs.length>0 && e('div',null,
+            e('button',{onClick:()=>setObert(o=>!o),style:{
+              width:'100%',background:'none',border:'none',color:C.dim,cursor:'pointer',
+              fontSize:10,fontFamily:'inherit',textAlign:'left',padding:'4px 0',display:'flex',
+              alignItems:'center',gap:4
+            }},
+              e('span',{style:{transition:'transform .2s',display:'inline-block',transform:obert?'rotate(90deg)':'rotate(0deg)'}},'›'),
+              regs.length+' despesa'+(regs.length!==1?'s':''),
+              e('span',{style:{marginLeft:'auto',color:col,fontWeight:700}},fmt(regs.reduce((s,r)=>s+r.import,0)))
+            ),
+            obert && e('div',{style:{borderTop:'1px solid '+C.border,paddingTop:8,display:'grid',gap:5}},
+              regs.map(r=>e('div',{key:r.id,style:{display:'flex',alignItems:'center',gap:8,padding:'5px 0'}},
+                e('span',{style:{color:C.dim,fontSize:10,minWidth:70}},r.data),
+                e('span',{style:{color:C.text,fontFamily:'monospace',fontWeight:700,fontSize:12}},fmt(r.import)),
+                e('button',{
+                  onClick:()=>setData(d=>{
+                    const prev2=(d.historialVariables?.[mesActiu]?.[cat])||0;
+                    return {
+                      ...d,
+                      despesesRegistre:(d.despesesRegistre||[]).filter(x=>x.id!==r.id),
+                      historialVariables:{...(d.historialVariables||{}),[mesActiu]:{
+                        ...(d.historialVariables?.[mesActiu]||{}),
+                        [cat]:Math.max(0,Math.round((prev2-r.import)*100)/100)
+                      }}
+                    };
+                  }),
+                  style:{marginLeft:'auto',background:'none',border:'none',color:C.red+'66',
+                    cursor:'pointer',fontSize:13,padding:0,lineHeight:1}
+                },'✕')
+              ))
+            )
           )
         );
       })
@@ -1007,8 +1037,12 @@ function GastosVariables({data,setData}) {
           if(Object.keys(er2).length){setVarErr(er2);return;}
           const v=Math.round(+varForm.import*100)/100;
           const prev=(data.historialVariables?.[mesActiu]?.[varForm.cat])||0;
+          const reg={id:uid(),cat:varForm.cat,import:v,data:new Date().toISOString().slice(0,10),mes:mesActiu};
           setData(d=>{
-            const nd={...d,historialVariables:{...(d.historialVariables||{}),[mesActiu]:{...(d.historialVariables?.[mesActiu]||{}),[varForm.cat]:Math.round((prev+v)*100)/100}}};
+            const nd={...d,
+              historialVariables:{...(d.historialVariables||{}),[mesActiu]:{...(d.historialVariables?.[mesActiu]||{}),[varForm.cat]:Math.round((prev+v)*100)/100}},
+              despesesRegistre:[...(d.despesesRegistre||[]),reg]
+            };
             if(varForm.cat==='Inversions'&&varForm.activId){
               nd.inversions=nd.inversions.map(i=>String(i.id)===String(varForm.activId)?{...i,valor:Math.round((i.valor+v)*100)/100,cost:Math.round((i.cost+v)*100)/100}:i);
             }
