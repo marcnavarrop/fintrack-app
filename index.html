@@ -345,7 +345,7 @@ function RowBtns({onSave,onCancel}) {
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
-function Dashboard({data,setData}) {
+function Dashboard({data,setData,setTab=()=>{}}) {
   const [editIng,setEditIng]=useState(false);
   const [tempIng,setTempIng]=useState('');
   const [modalObj,setModalObj]=useState(null);
@@ -940,6 +940,9 @@ function Inversions({data,setData}) {
   const [refreshLog,setRefreshLog]=useState('');
   const [filtreInv,setFiltreInv]=useState('Tots');
   const [sortDesc,setSortDesc]=useState(true);
+  const [aportModal,setAportModal]=useState(false);
+  const [aportForm,setAportForm]=useState({invId:'',import:''});
+  const [aportErr,setAportErr]=useState({});
 
   const total=data.inversions.reduce((s,i)=>s+i.valor,0);
   const totalCost=data.inversions.reduce((s,i)=>s+i.cost,0);
@@ -981,7 +984,9 @@ function Inversions({data,setData}) {
         e('div',{style:{color:guany>=0?C.green:C.red,fontSize:11}},guany>=0?'▲':'▼',' ',e(Money,null,fmt(Math.abs(guany))),` (${Math.abs(pctG).toFixed(1)}%)`)
       ),
       e('div',{style:{display:'flex',flexDirection:'column',gap:5,alignItems:'flex-end'}},
-        e(Btn,{onClick:()=>obrir('nou')},'+ Afegir'),
+        e(Btn,{onClick:()=>{setAportForm({invId:'',import:''});setAportErr({});setAportModal(true);}},
+          '+ Aportació'),
+        e(Btn,{onClick:()=>obrir('nou'),secondary:true},'+ Nou actiu'),
         e(Btn,{onClick:refreshAll,disabled:refreshingAll,secondary:true,style:{fontSize:10,padding:'5px 10px'}},refreshingAll?'⏳ Actualitzant...':'↻ Actualitzar tots'),
         refreshLog && e('div',{style:{color:refreshLog.startsWith('✓')?C.green:C.dim,fontSize:9,textAlign:'right',maxWidth:150}},refreshLog)
       )
@@ -1036,6 +1041,113 @@ function Inversions({data,setData}) {
         onValorChange:v=>setData(d=>({...d,inversions:d.inversions.map(i=>i.id===inv.id?{...i,valor:v}:i)})),
         onDelete:()=>setData(d=>({...d,inversions:d.inversions.filter(x=>x.id!==inv.id)}))
       }))
+    ),
+    aportModal && e(Modal,{title:'+ Aportació a inversió',onClose:()=>setAportModal(false)},
+      // Descripció del concepte
+      e('div',{style:{background:C.accentDim,border:'1px solid '+C.accent+'33',borderRadius:10,padding:'10px 14px',marginBottom:14}},
+        e('div',{style:{color:C.accent,fontSize:11,fontWeight:700,marginBottom:3}},'Com funciona'),
+        e('div',{style:{color:C.dim,fontSize:11,lineHeight:1.6}},
+          "Afegeix diners a una posicio existent. El valor i el cost s'actualitzen automaticament.",e('br'),
+          "Si supera el teu gasto fix mensual d'inversions, el diferencial es registra com a variable extra."
+        )
+      ),
+      // Seleccionar actiu
+      e('div',{style:{marginBottom:14}},
+        e('div',{style:{color:C.dim,fontSize:10,fontWeight:600,marginBottom:8,textTransform:'uppercase'}},'On vas a aportar?'),
+        e('div',{style:{display:'grid',gap:6}},
+          data.inversions.map(inv=>e('div',{key:inv.id,
+            onClick:()=>setAportForm(f=>({...f,invId:String(inv.id)})),
+            style:{
+              background:aportForm.invId===String(inv.id)?inv.color+'22':C.surface,
+              border:'2px solid '+(aportForm.invId===String(inv.id)?inv.color:C.border),
+              borderRadius:10,padding:'10px 14px',cursor:'pointer',transition:'all .15s',
+              display:'flex',justifyContent:'space-between',alignItems:'center'
+            }},
+            e('div',{style:{display:'flex',alignItems:'center',gap:8}},
+              e('div',{style:{width:10,height:10,borderRadius:'50%',background:inv.color}}),
+              e('div',null,
+                e('div',{style:{color:C.text,fontWeight:700,fontSize:13}},inv.nom),
+                e('div',{style:{color:C.dim,fontSize:10}},inv.tipus+(inv.ticker?' · '+inv.ticker:''))
+              )
+            ),
+            e('div',{style:{textAlign:'right'}},
+              e('div',{style:{color:C.text,fontFamily:'monospace',fontWeight:700,fontSize:12}},e(Money,null,fmt(inv.valor))),
+              e('div',{style:{color:inv.valor>=inv.cost?C.green:C.red,fontSize:10}},
+                (inv.valor>=inv.cost?'+':'')+((inv.valor-inv.cost)/inv.cost*100).toFixed(1)+'%'
+              )
+            )
+          ))
+        ),
+        aportErr.invId && e('div',{style:{color:C.red,fontSize:10,marginTop:4}},aportErr.invId)
+      ),
+      // Import
+      e('div',{style:{marginBottom:14}},
+        e('div',{style:{color:C.dim,fontSize:10,fontWeight:600,marginBottom:6,textTransform:'uppercase'}},'Import a aportar (€)'),
+        e('input',{
+          type:'number',value:aportForm.import,
+          onChange:ev=>setAportForm(f=>({...f,import:ev.target.value})),
+          placeholder:'0.00',
+          style:{width:'100%',background:C.bg,border:'1px solid '+(aportErr.import?C.red:C.border),
+            borderRadius:8,color:C.text,padding:'10px 12px',fontSize:15,outline:'none',
+            fontFamily:'monospace',fontWeight:700,boxSizing:'border-box'}
+        }),
+        aportErr.import && e('div',{style:{color:C.red,fontSize:10,marginTop:3}},aportErr.import),
+        // Info: fix mensual d'inversions
+        (()=>{
+          const fixInv = data.gastosFixes.filter(g=>
+            g.nom.toLowerCase().includes('invers') ||
+            g.categoria.toLowerCase().includes('invers')
+          ).reduce((s,g)=>{
+            const im = g.periodicitat==='anual'?g.import/12:g.import;
+            return s+im;
+          },0);
+          const v = parseFloat(aportForm.import)||0;
+          if(fixInv>0) return e('div',{style:{marginTop:6,color:C.dim,fontSize:10,lineHeight:1.5}},
+            'Gasto fix inversions: ',e('span',{style:{color:C.accent}},e(Money,null,fmt(fixInv)),'/mes'),e('br'),
+            v>fixInv
+              ? e('span',{style:{color:C.yellow}},'⚠ Extra de ',e(Money,null,fmt(v-fixInv)),' es registrara com a variable')
+              : e('span',{style:{color:C.green}},'✓ Dins del fix mensual')
+          );
+          return null;
+        })()
+      ),
+      // Botó confirmar
+      e(RowBtns,{
+        onSave:()=>{
+          const er={};
+          if(!aportForm.invId)er.invId='Selecciona un actiu';
+          if(!aportForm.import||isNaN(aportForm.import)||+aportForm.import<=0)er.import='Import vàlid';
+          if(Object.keys(er).length){setAportErr(er);return;}
+          const v=Math.round(+aportForm.import*100)/100;
+          const invId=aportForm.invId;
+          // Fix mensual inversions
+          const fixInv=data.gastosFixes.filter(g=>
+            g.nom.toLowerCase().includes('invers')||g.categoria.toLowerCase().includes('invers')
+          ).reduce((s,g)=>s+(g.periodicitat==='anual'?g.import/12:g.import),0);
+          const extra=fixInv>0?Math.max(0,v-fixInv):0;
+          setData(d=>{
+            const nd={...d,
+              inversions:d.inversions.map(i=>String(i.id)===invId
+                ?{...i,valor:Math.round((i.valor+v)*100)/100,cost:Math.round((i.cost+v)*100)/100}
+                :i
+              )
+            };
+            // Si hi ha extra, registrar com a variable
+            if(extra>0){
+              const mk=mesKey();
+              const prev=(nd.historialVariables?.[mk]?.['Inversions extra'])||0;
+              nd.historialVariables={...(nd.historialVariables||{}),[mk]:{
+                ...(nd.historialVariables?.[mk]||{}),
+                'Inversions extra':Math.round((prev+extra)*100)/100
+              }};
+            }
+            return nd;
+          });
+          setAportModal(false);
+          setAportForm({invId:'',import:''});
+        },
+        onCancel:()=>setAportModal(false)
+      })
     ),
     modal && e(Modal,{title:modal==='nou'?'Nova inversió':'Editar inversió',onClose:()=>setModal(null)},
       e(Input,{label:'Nom',value:form.nom,onChange:v=>setForm(f=>({...f,nom:v})),placeholder:'Ex: MSCI World ETF',error:errs.nom}),
