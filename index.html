@@ -546,7 +546,42 @@ function Dashboard({data,setData,setTab=()=>{}}) {
           e('div',{style:{color:C.dim,fontSize:10}},t('taxaEstalvi')),
           e('div',{style:{color:estalvi>0?C.green:C.red,fontSize:16,fontWeight:800,fontFamily:'monospace'}},(nomina>0?Math.round((estalvi/nomina)*100):0)+'%'),
           e('div',{style:{color:C.dim,fontSize:10}},e(Money,null,fmt(estalvi)),'/mes')))),
-    e(Card,{style:{marginBottom:12,padding:'12px 14px'}},
+    // Ingressos extra
+    esActual && (data.ingresosExtra||[]).length > 0 && e(Card,{style:{marginBottom:12,padding:'12px 14px'}},
+      e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}},
+        e('div',null,
+          e('div',{style:{color:C.dim,fontSize:10,letterSpacing:.8,textTransform:'uppercase',marginBottom:3}},'💸 Ingressos extra'),
+          e('div',{style:{color:C.green,fontSize:16,fontWeight:800,fontFamily:'monospace'}},
+            e(Money,null,fmt((data.ingresosExtra||[]).reduce((s,x)=>s+x.import,0))))),
+        e('button',{
+          onClick:()=>{
+            const nom=window.prompt('Nom de l\'ingrés (ex: Lloguer, Renda...)');
+            if(!nom)return;
+            const imp=parseFloat(window.prompt('Import (€)'));
+            if(isNaN(imp)||imp<=0)return;
+            setData(d=>({...d,ingresosExtra:[...(d.ingresosExtra||[]),{id:uid(),nom:nom.trim(),import:imp,data:new Date().toISOString().slice(0,10)}]}));
+          },
+          style:{background:C.accentDim,border:'1px solid '+C.accent+'33',color:C.accent,borderRadius:7,padding:'4px 10px',cursor:'pointer',fontSize:11,fontWeight:700,fontFamily:'inherit'}
+        },'+ Ingrés')),
+      e('div',{style:{display:'grid',gap:4}},
+        (data.ingresosExtra||[]).sort((a,b)=>b.data.localeCompare(a.data)).map(x=>
+          e('div',{key:x.id,style:{display:'flex',alignItems:'center',gap:8,padding:'5px 0',borderTop:'1px solid '+C.border}},
+            e('span',{style:{color:C.dim,fontSize:10,minWidth:75}},x.data),
+            e('span',{style:{color:C.text,fontSize:12,fontWeight:600,flex:1}},x.nom),
+            e('span',{style:{color:C.green,fontFamily:'monospace',fontWeight:700,fontSize:13}},e(Money,null,fmt(x.import))),
+            e('button',{onClick:()=>setData(d=>({...d,ingresosExtra:(d.ingresosExtra||[]).filter(i=>i.id!==x.id)})),
+              style:{background:'none',border:'none',color:C.red+'66',cursor:'pointer',fontSize:13,padding:0}},'✕'))))),
+    esActual && e('button',{
+      onClick:()=>{
+        const nom=window.prompt('Nom de l\'ingrés (ex: Lloguer, Renda...)');
+        if(!nom)return;
+        const imp=parseFloat(window.prompt('Import (€)'));
+        if(isNaN(imp)||imp<=0)return;
+        setData(d=>({...d,ingresosExtra:[...(d.ingresosExtra||[]),{id:uid(),nom:nom.trim(),import:imp,data:new Date().toISOString().slice(0,10)}]}));
+      },
+      style:{display:'flex',alignItems:'center',gap:6,background:C.accentDim,border:'1px solid '+C.accent+'33',color:C.accent,borderRadius:8,padding:'7px 14px',cursor:'pointer',fontSize:11,fontWeight:700,fontFamily:'inherit',marginBottom:12,width:'100%',justifyContent:'center'}
+    },'💸 + Ingrés extra'),
+        e(Card,{style:{marginBottom:12,padding:'12px 14px'}},
       e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
         e('div',null,
           e('div',{style:{color:C.dim,fontSize:10,letterSpacing:.8,textTransform:'uppercase',marginBottom:3}},'💰 '+t('cash')),
