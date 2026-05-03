@@ -29,6 +29,7 @@
 <body>
 <div id="root"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 // Show loading screen
 document.getElementById('root').innerHTML = 
@@ -207,8 +208,11 @@ function AreaChartSimple({data, height=160}) {
 
 // ── Supabase Storage (única font de veritat) ─────────────────────────────────
 const SB_LOAD = async () => {
-  const r = await fetch(SB_URL+'/rest/v1/'+SB_TABLE+'?id=eq.'+SB_ROW_ID+'&select=data,updated_at', {
-    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}
+  const user = await sbGetUser();
+  if(!user) throw new Error('No autenticat');
+  const token = (await sbClient.auth.getSession()).data.session?.access_token;
+  const r = await fetch(SB_URL+'/rest/v1/fintrack_users?id=eq.'+user.id+'&select=data,updated_at', {
+    headers:{'apikey':SB_KEY,'Authorization':'Bearer '+token}
   });
   if(!r.ok) throw new Error('HTTP '+r.status);
   const rows = await r.json();
@@ -217,15 +221,18 @@ const SB_LOAD = async () => {
 };
 
 const SB_SAVE = async (d) => {
-  const r = await fetch(SB_URL+'/rest/v1/'+SB_TABLE, {
+  const user = await sbGetUser();
+  if(!user) throw new Error('No autenticat');
+  const token = (await sbClient.auth.getSession()).data.session?.access_token;
+  const r = await fetch(SB_URL+'/rest/v1/fintrack_users', {
     method:'POST',
     headers:{
       'apikey':SB_KEY,
-      'Authorization':'Bearer '+SB_KEY,
+      'Authorization':'Bearer '+token,
       'Content-Type':'application/json',
       'Prefer':'resolution=merge-duplicates'
     },
-    body: JSON.stringify({id:SB_ROW_ID, data:JSON.stringify(d), updated_at:new Date().toISOString()})
+    body: JSON.stringify({id:user.id, data:JSON.stringify(d), updated_at:new Date().toISOString()})
   });
   if(!r.ok) { const e=await r.text(); throw new Error(e); }
   return true;
@@ -1822,6 +1829,70 @@ function runDiagnostic(data) {
   return issues;
 }
 
+// ── AUTH SCREEN (Login / Register) ───────────────────────────────────────────
+function AuthScreen({onAuth}) {
+  const [mode,setMode] = useState('login');
+  const [email,setEmail] = useState('');
+  const [pass,setPass] = useState('');
+  const [pass2,setPass2] = useState('');
+  const [loading,setLoading] = useState(false);
+  const [err,setErr] = useState('');
+  const [ok,setOk] = useState('');
+
+  const submit = async () => {
+    setErr('');setOk('');
+    if(!email.trim()||!pass.trim()){setErr('Omple tots els camps');return;}
+    if(mode==='register'&&pass!==pass2){setErr('Les contrasenyes no coincideixen');return;}
+    if(mode==='register'&&pass.length<6){setErr('Contrasenya de minim 6 caracters');return;}
+    setLoading(true);
+    try {
+      if(mode==='register'){
+        await sbSignUp(email.trim(),pass);
+        setOk('Compte creat! Comprova el correu per confirmar-lo, despres torna a entrar.');
+        setMode('login');setPass('');setPass2('');
+      } else {
+        await sbSignIn(email.trim(),pass);
+        onAuth();
+      }
+    } catch(e){ setErr(e.message); }
+    setLoading(false);
+  };
+
+  const inp = {width:'100%',background:C.bg,border:'1px solid '+C.border,borderRadius:10,color:C.text,padding:'12px 14px',fontSize:14,outline:'none',fontFamily:'inherit',boxSizing:'border-box',marginBottom:10};
+
+  return e('div',{style:{minHeight:'100vh',background:C.bg,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'0 24px',fontFamily:"'Sora',sans-serif"}},
+    e('div',{style:{width:'100%',maxWidth:360}},
+      e('div',{style:{textAlign:'center',marginBottom:32}},
+        e('div',{style:{fontSize:32,fontWeight:900,marginBottom:6}},
+          e('span',{style:{color:C.accent}},'fin'),e('span',{style:{color:C.white}},'track')
+        ),
+        e('div',{style:{color:C.dim,fontSize:11,letterSpacing:2,textTransform:'uppercase'}},'Gestor financer personal')
+      ),
+      e('div',{style:{background:C.surface,border:'1px solid '+C.border,borderRadius:16,padding:24}},
+        e('div',{style:{display:'flex',gap:4,marginBottom:20,background:C.bg,borderRadius:10,padding:4}},
+          ['login','register'].map(m=>e('button',{key:m,onClick:()=>{setMode(m);setErr('');setOk('');},style:{
+            flex:1,padding:'8px 0',borderRadius:8,border:'none',cursor:'pointer',fontFamily:'inherit',
+            fontWeight:700,fontSize:12,transition:'all .15s',
+            background:mode===m?C.surface:'transparent',
+            color:mode===m?C.accent:C.dim
+          }},m==='login'?'Entrar':'Crear compte'))
+        ),
+        e('input',{type:'email',placeholder:'Correu electronic',value:email,onChange:ev=>setEmail(ev.target.value),style:inp}),
+        e('input',{type:'password',placeholder:'Contrasenya',value:pass,onChange:ev=>setPass(ev.target.value),
+          onKeyDown:ev=>{if(ev.key==='Enter')submit();},style:inp}),
+        mode==='register' && e('input',{type:'password',placeholder:'Confirma la contrasenya',value:pass2,
+          onChange:ev=>setPass2(ev.target.value),onKeyDown:ev=>{if(ev.key==='Enter')submit();},style:inp}),
+        err && e('div',{style:{color:C.red,fontSize:12,marginBottom:10,padding:'8px 12px',background:C.red+'11',borderRadius:8}},err),
+        ok && e('div',{style:{color:C.green,fontSize:12,marginBottom:10,padding:'8px 12px',background:C.green+'11',borderRadius:8}},ok),
+        e('button',{onClick:submit,disabled:loading,style:{
+          width:'100%',background:loading?C.border:C.accent,color:C.bg,border:'none',
+          borderRadius:10,padding:'13px 0',fontWeight:800,fontSize:14,cursor:loading?'default':'pointer',fontFamily:'inherit'
+        }},loading?'Carregant...':(mode==='login'?'Entrar':'Crear compte'))
+      )
+    )
+  );
+}
+
 // ── PIN CHANGE ───────────────────────────────────────────────────────────────
 const DEFAULT_PIN = '1234';
 
@@ -2128,8 +2199,10 @@ const TABS=[
 ];
 
 function App() {
+  const [authUser,setAuthUser]=useState(null);   // null = not checked yet
+  const [authReady,setAuthReady]=useState(false); // false = checking auth
   const [unlocked,setUnlocked]=useState(false);
-  const [correctPin,setCorrectPin]=useState(null); // null = still loading
+  const [correctPin,setCorrectPin]=useState(null);
   const [tab,setTab]=useState('dashboard');
   const [blurred,setBlurred]=useState(false);
   const [showBackup,setShowBackup]=useState(false);
@@ -2145,6 +2218,23 @@ function App() {
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [userHasEdited, setUserHasEdited] = useState(false);
+
+  // ── Check auth on mount ───────────────────────────────────────────────────
+  useEffect(()=>{
+    (async()=>{
+      try {
+        const user = await sbGetUser();
+        setAuthUser(user);
+      } catch {}
+      setAuthReady(true);
+    })();
+    // Listen for auth changes
+    const {data:{subscription}} = sbClient.auth.onAuthStateChange((_,session)=>{
+      setAuthUser(session?.user||null);
+      if(!session?.user) {setUnlocked(false);setCorrectPin(null);}
+    });
+    return ()=>subscription.unsubscribe();
+  },[]);
 
   // ── Auto-actualitza el dia 1 de cada mes ─────────────────────────────────
   useEffect(()=>{
@@ -2210,16 +2300,18 @@ function App() {
     setDataSafe(d=>({...d,...updates}));
   },[loaded]);
 
-  // ── Càrrega inicial des de Supabase ───────────────────────────────────────
+  // ── Càrrega inicial des de Supabase (quan hi ha usuari autenticat) ─────────
   useEffect(()=>{
+    if(!authUser) return;
+    setLoaded(false);
     (async()=>{
       try {
         const d = await SB_LOAD();
         if(d && typeof d.ingressos !== 'undefined') {
           setData({...INIT,...d});
-          // Carrega el PIN des de les dades de Supabase
           setCorrectPin(d.pin||DEFAULT_PIN);
         } else {
+          setData(INIT);
           setCorrectPin(DEFAULT_PIN);
         }
         setLoaded(true);
@@ -2229,7 +2321,7 @@ function App() {
         setLoaded(true);
       }
     })();
-  },[]);
+  },[authUser]);
 
   // ── Auto-desa cada canvi a Supabase (debounce 1s) ─────────────────────────
   const setDataSafe = (updater) => {
@@ -2278,7 +2370,16 @@ function App() {
   const [hBlur,setHBlur]=useState(false);
   const [hBackup,setHBackup]=useState(false);
 
-  // Mentre carrega el PIN, mostra loading mínim
+  // Comprovant autenticació
+  if(!authReady) return e('div',{style:{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center'}},
+    e('div',{style:{textAlign:'center'}},
+      e('div',{style:{fontSize:26,fontWeight:900,marginBottom:12}},e('span',{style:{color:C.accent}},'fin'),e('span',{style:{color:C.white}},'track')),
+      e('div',{style:{width:28,height:28,border:'3px solid '+C.border,borderTopColor:C.accent,borderRadius:'50%',animation:'spin .8s linear infinite',margin:'0 auto'}})
+    )
+  );
+  // No autenticat → pantalla login/registre
+  if(!authUser) return e(AuthScreen,{onAuth:async()=>{const u=await sbGetUser();setAuthUser(u);}});
+  // Autenticat però PIN no carregat
   if(correctPin===null) return e('div',{style:{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center'}},
     e('div',{style:{textAlign:'center'}},
       e('div',{style:{fontSize:26,fontWeight:900,marginBottom:12}},e('span',{style:{color:C.accent}},'fin'),e('span',{style:{color:C.white}},'track')),
