@@ -267,8 +267,15 @@ const INIT = {
   cash:0,
   historialNomines:{},
   snapshotMesos:{},
-  despesesRegistre:[], // [{id, cat, import, data, mes}] // {YYYY-MM: import} gastosFixes:[], pressupostosVariables:{}, historialVariables:{},
-  inversions:[], bens:[], objectius:[], transaccions:[], evolucioPat:[],
+  despesesRegistre:[],
+  gastosFixes:[],
+  pressupostosVariables:{},
+  historialVariables:{},
+  inversions:[],
+  bens:[],
+  objectius:[],
+  transaccions:[],
+  evolucioPat:[],
   fire:{edatActual:30, despesesAnuals:18000, rendimentEsperatPct:7, inflacio:2.5, reglaPct:4}
 };
 
@@ -1165,7 +1172,7 @@ function BackupModal({data,setData,onClose}) {
   };
   const handleSbLoad=async()=>{
     setSbStatus('loading');setSbMsg(t('carregant'));
-    try{const d=await SB_LOAD();if(d){setData({...INIT,...d});setSbStatus('ok');setSbMsg('ok Restaurat de Supabase');setTimeout(onClose,1200);}else{setSbStatus('error');setSbMsg('Cap dada a Supabase');}}
+    try{const d=await SB_LOAD();if(d){setData({...INIT,...d,gastosFixes:d.gastosFixes||[],inversions:d.inversions||[],bens:d.bens||[],objectius:d.objectius||[],transaccions:d.transaccions||[],evolucioPat:d.evolucioPat||[],despesesRegistre:d.despesesRegistre||[],historialVariables:d.historialVariables||{},pressupostosVariables:d.pressupostosVariables||{}});setSbStatus('ok');setSbMsg('ok Restaurat de Supabase');setTimeout(onClose,1200);}else{setSbStatus('error');setSbMsg('Cap dada a Supabase');}}
     catch(e){setSbStatus('error');setSbMsg('Error: '+e.message);}
   };
   const tabBtn=(id,label)=>e('button',{onClick:()=>setTab(id),style:{
@@ -1301,7 +1308,7 @@ function App() {
     if(!authUser)return;
     setLoaded(false);
     (async()=>{
-      try{const d=await SB_LOAD();if(d&&typeof d.ingressos!=='undefined'){setData({...INIT,...d});}else{setData(INIT);}setLoaded(true);}
+      try{const d=await SB_LOAD();if(d&&typeof d.ingressos!=='undefined'){setData({...INIT,...d,gastosFixes:d.gastosFixes||[],inversions:d.inversions||[],bens:d.bens||[],objectius:d.objectius||[],transaccions:d.transaccions||[],evolucioPat:d.evolucioPat||[],despesesRegistre:d.despesesRegistre||[],historialVariables:d.historialVariables||{},pressupostosVariables:d.pressupostosVariables||{},historialNomines:d.historialNomines||{},snapshotMesos:d.snapshotMesos||{},fire:d.fire||INIT.fire});}else{setData({...INIT});}setLoaded(true);}
       catch(e){setLoadError('No es pot connectar: '+e.message);setLoaded(true);}
     })();
   },[authUser]);
