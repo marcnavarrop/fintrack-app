@@ -348,7 +348,8 @@ const T = {
   }
 };
 const LangCtx = createContext('ca');
-const t = (lang, key) => T[lang]?.[key] || T.ca[key] || key;
+let _lang = localStorage.getItem('fintrack-lang')||'ca';
+const t = (key) => T[_lang]?.[key] || T.ca[key] || key;
 
 function Money({children}) {
   const blur = useContext(BlurCtx);
@@ -511,7 +512,7 @@ function Dashboard({data,setData,setTab=()=>{}}) {
         style:{background:'none',border:'1px solid '+C.border,color:mesIdx===mesosDisp.length-1?C.border:C.dim,borderRadius:7,width:28,height:28,cursor:mesIdx===mesosDisp.length-1?'default':'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}},'›')),
     e('div',{style:{marginBottom:16,paddingBottom:16,borderBottom:'1px solid '+C.border}},
       e('div',{style:{color:C.dim,fontSize:10,letterSpacing:1.5,textTransform:'uppercase',marginBottom:2}},
-        esActual?t(lang,'patrimoni'):'Patrimoni net — '+mesLabel(mesSelec)),
+        esActual?t('patrimoni'):'Patrimoni net — '+mesLabel(mesSelec)),
       e('div',{style:{fontSize:32,fontWeight:900,color:C.white,fontFamily:"'DM Mono',monospace",letterSpacing:-1}},e(Money,null,fmt(patrimoni))),
       e('div',{style:{color:pctInv>=0?C.green:C.red,fontSize:11,marginTop:2}},
         (pctInv>=0?'▲':'▼')+' '+Math.abs(pctInv).toFixed(1)+'% rendiment inversions · '+(guanyInv>=0?'+':''),
@@ -519,7 +520,7 @@ function Dashboard({data,setData,setTab=()=>{}}) {
     e(Card,{style:{marginBottom:12,padding:'12px 14px'}},
       e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
         e('div',null,
-          e('div',{style:{color:C.dim,fontSize:10,letterSpacing:.8,textTransform:'uppercase',marginBottom:3}},'💼 '+t(lang,'nomina')),
+          e('div',{style:{color:C.dim,fontSize:10,letterSpacing:.8,textTransform:'uppercase',marginBottom:3}},'💼 '+t('nomina')),
           esActual && editIng
             ? e('div',{style:{display:'flex',alignItems:'center',gap:7,marginTop:3}},
                 e('input',{value:tempIng,onChange:ev=>setTempIng(ev.target.value),type:'number',autoFocus:true,
@@ -533,13 +534,13 @@ function Dashboard({data,setData,setTab=()=>{}}) {
                 esActual&&e('button',{onClick:()=>{setTempIng(String(nomina));setEditIng(true);},
                   style:{background:C.accentDim,border:'1px solid '+C.accent+'33',color:C.accent,borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:10,fontFamily:'inherit',fontWeight:600}},'Editar'))),
         e('div',{style:{textAlign:'right'}},
-          e('div',{style:{color:C.dim,fontSize:10}},t(lang,'taxaEstalvi')),
+          e('div',{style:{color:C.dim,fontSize:10}},t('taxaEstalvi')),
           e('div',{style:{color:estalvi>0?C.green:C.red,fontSize:16,fontWeight:800,fontFamily:'monospace'}},(nomina>0?Math.round((estalvi/nomina)*100):0)+'%'),
           e('div',{style:{color:C.dim,fontSize:10}},e(Money,null,fmt(estalvi)),'/mes')))),
     e(Card,{style:{marginBottom:12,padding:'12px 14px'}},
       e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
         e('div',null,
-          e('div',{style:{color:C.dim,fontSize:10,letterSpacing:.8,textTransform:'uppercase',marginBottom:3}},'💰 '+t(lang,'cash')),
+          e('div',{style:{color:C.dim,fontSize:10,letterSpacing:.8,textTransform:'uppercase',marginBottom:3}},'💰 '+t('cash')),
           esActual && editCash
             ? e('div',{style:{display:'flex',alignItems:'center',gap:7,marginTop:3}},
                 e('input',{value:tempCash,onChange:ev=>setTempCash(ev.target.value),type:'number',autoFocus:true,
@@ -553,24 +554,24 @@ function Dashboard({data,setData,setTab=()=>{}}) {
                 esActual&&e('button',{onClick:()=>{setTempCash(String(data.cash||0));setEditCash(true);},
                   style:{background:C.accentDim,border:'1px solid '+C.accent+'33',color:C.accent,borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:10,fontFamily:'inherit',fontWeight:600}},'Editar'))),
         e('div',{style:{textAlign:'right'}},
-          e('div',{style:{color:C.dim,fontSize:10}},t(lang,'delPatrimoni')),
+          e('div',{style:{color:C.dim,fontSize:10}},t('delPatrimoni')),
           e('div',{style:{color:C.green,fontSize:16,fontWeight:800,fontFamily:'monospace'}},(distribTotal>0?Math.round(totalCash/distribTotal*100):0)+'%')))),
     e('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:9,marginBottom:12}},
-      e(StatBox,{label:t(lang,'fixes'),value:e(Money,null,fmt(totalFixes)),sub:'mensual',color:C.red,icon:'📌',onClick:esActual?()=>setTab('fixes'):null}),
-      e(StatBox,{label:t(lang,'variables'),value:e(Money,null,fmt(totalVars)),sub:mesLabel(mesSelec),color:C.orange,icon:'📊',onClick:esActual?()=>setTab('variables'):null}),
-      e(StatBox,{label:t(lang,'inversions'),value:e(Money,null,fmt(totalInv)),sub:e('span',null,(guanyInv>=0?'+':''),e(Money,null,fmt(guanyInv))),color:C.accent,icon:'📈',onClick:esActual?()=>setTab('inversions'):null}),
-      e(StatBox,{label:t(lang,'bens'),value:e(Money,null,fmt(totalBens-totalDeute)),color:C.purple,icon:'🏛️',onClick:esActual?()=>setTab('bens'):null})),
+      e(StatBox,{label:t('fixes'),value:e(Money,null,fmt(totalFixes)),sub:'mensual',color:C.red,icon:'📌',onClick:esActual?()=>setTab('fixes'):null}),
+      e(StatBox,{label:t('variables'),value:e(Money,null,fmt(totalVars)),sub:mesLabel(mesSelec),color:C.orange,icon:'📊',onClick:esActual?()=>setTab('variables'):null}),
+      e(StatBox,{label:t('inversions'),value:e(Money,null,fmt(totalInv)),sub:e('span',null,(guanyInv>=0?'+':''),e(Money,null,fmt(guanyInv))),color:C.accent,icon:'📈',onClick:esActual?()=>setTab('inversions'):null}),
+      e(StatBox,{label:t('bens'),value:e(Money,null,fmt(totalBens-totalDeute)),color:C.purple,icon:'🏛️',onClick:esActual?()=>setTab('bens'):null})),
     e('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}},
       e(Card,null,
         e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}},
-          e('div',{style:{fontWeight:700,fontSize:10,color:C.dim,textTransform:'uppercase'}},t(lang,'evolucio')),
+          e('div',{style:{fontWeight:700,fontSize:10,color:C.dim,textTransform:'uppercase'}},t('evolucio')),
           e('span',{style:{color:C.dim,fontSize:9}},'Auto: dia 1 cada mes')),
         evoActual.length<2
           ? e('div',{style:{height:130,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6}},
               e('div',{style:{color:C.dim,fontSize:11}},'Ves afegint fotos cada mes'))
           : e(AreaChartSimple,{data:evoActual,height:130})),
       e(Card,null,
-        e('div',{style:{fontWeight:700,fontSize:10,color:C.dim,marginBottom:10,textTransform:'uppercase'}},t(lang,'distribucio')),
+        e('div',{style:{fontWeight:700,fontSize:10,color:C.dim,marginBottom:10,textTransform:'uppercase'}},t('distribucio')),
         distrib.length===0
           ? e('div',{style:{color:C.dim,fontSize:11,textAlign:'center',padding:16}},'Afegeix dades')
           : e('div',null,
@@ -586,7 +587,7 @@ function Dashboard({data,setData,setTab=()=>{}}) {
                 e('span',{style:{background:d.color+'22',color:d.color,borderRadius:4,padding:'0 5px',fontSize:9,fontWeight:700,marginLeft:3}},d.pct+'%')))))),
     e(Card,null,
       e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}},
-        e('div',{style:{fontWeight:700,fontSize:10,color:C.dim,textTransform:'uppercase'}},t(lang,'objectius')),
+        e('div',{style:{fontWeight:700,fontSize:10,color:C.dim,textTransform:'uppercase'}},t('objectius')),
         e(Btn,{onClick:()=>{setFObj({nom:'',meta:'',actual:'',icona:'🎯'});setErrObj({});setModalObj('nou');},style:{padding:'4px 10px',fontSize:10}},'+ Nou')),
       data.objectius.length===0&&e('div',{style:{color:C.dim,fontSize:12,textAlign:'center',padding:16}},'Cap objectiu. Afegeix-ne un!'),
       data.objectius.map(o=>{
@@ -1402,23 +1403,23 @@ function AuthScreen({onAuth}) {
       e('div',{style:{textAlign:'center',marginBottom:32}},
         e('div',{style:{fontSize:32,fontWeight:900,marginBottom:6}},
           e('span',{style:{color:C.accent}},'fin'),e('span',{style:{color:C.white}},'track')),
-        e('div',{style:{color:C.dim,fontSize:11,letterSpacing:2,textTransform:'uppercase'}},t(lang,'gestorPersonal'))),
+        e('div',{style:{color:C.dim,fontSize:11,letterSpacing:2,textTransform:'uppercase'}},t('gestorPersonal'))),
       e('div',{style:{background:C.surface,border:'1px solid '+C.border,borderRadius:16,padding:24}},
         e('div',{style:{display:'flex',gap:4,marginBottom:20,background:C.bg,borderRadius:10,padding:4}},
           ['login','register'].map(m=>e('button',{key:m,onClick:()=>{setMode(m);setErr('');setOk('');},style:{
             flex:1,padding:'8px 0',borderRadius:8,border:'none',cursor:'pointer',fontFamily:'inherit',
             fontWeight:700,fontSize:12,transition:'all .15s',
             background:mode===m?C.surface:'transparent',color:mode===m?C.accent:C.dim
-          }},m==='login'?t(lang,'entrar'):t(lang,'crearCompte')))),
-        e('input',{type:'email',placeholder:t(lang,'correuElectronic'),value:email,onChange:ev=>setEmail(ev.target.value),style:inp}),
-        e('input',{type:'password',placeholder:t(lang,'contrasenya'),value:pass,onChange:ev=>setPass(ev.target.value),onKeyDown:ev=>{if(ev.key==='Enter')submit();},style:inp}),
-        mode==='register'&&e('input',{type:'password',placeholder:t(lang,'confirmaContrasenya'),value:pass2,onChange:ev=>setPass2(ev.target.value),onKeyDown:ev=>{if(ev.key==='Enter')submit();},style:inp}),
+          }},m==='login'?t('entrar'):t('crearCompte')))),
+        e('input',{type:'email',placeholder:t('correuElectronic'),value:email,onChange:ev=>setEmail(ev.target.value),style:inp}),
+        e('input',{type:'password',placeholder:t('contrasenya'),value:pass,onChange:ev=>setPass(ev.target.value),onKeyDown:ev=>{if(ev.key==='Enter')submit();},style:inp}),
+        mode==='register'&&e('input',{type:'password',placeholder:t('confirmaContrasenya'),value:pass2,onChange:ev=>setPass2(ev.target.value),onKeyDown:ev=>{if(ev.key==='Enter')submit();},style:inp}),
         err&&e('div',{style:{color:C.red,fontSize:12,marginBottom:10,padding:'8px 12px',background:C.red+'11',borderRadius:8}},err),
         ok&&e('div',{style:{color:C.green,fontSize:12,marginBottom:10,padding:'8px 12px',background:C.green+'11',borderRadius:8}},ok),
         e('button',{onClick:submit,disabled:loading,style:{
           width:'100%',background:loading?C.border:C.accent,color:C.bg,border:'none',
           borderRadius:10,padding:'13px 0',fontWeight:800,fontSize:14,cursor:loading?'default':'pointer',fontFamily:'inherit'
-        }},loading?t(lang,'carregant'):(mode==='login'?t(lang,'entrar'):t(lang,'crearCompte'))))));
+        }},loading?t('carregant'):(mode==='login'?t('entrar'):t('crearCompte'))))));
 }
 
 // ── BACKUP + DIAGNOSTIC MODAL ─────────────────────────────────────────────────
@@ -1435,7 +1436,7 @@ function BackupModal({data,setData,onClose}) {
     catch(e){setSbStatus('error');setSbMsg('Error: '+e.message);}
   };
   const handleSbLoad=async()=>{
-    setSbStatus('loading');setSbMsg(t(lang2,'carregant'));
+    setSbStatus('loading');setSbMsg(t('carregant'));
     try{const d=await SB_LOAD();if(d){setData({...INIT,...d});setSbStatus('ok');setSbMsg('ok Restaurat de Supabase');setTimeout(onClose,1200);}else{setSbStatus('error');setSbMsg('Cap dada a Supabase');}}
     catch(e){setSbStatus('error');setSbMsg('Error: '+e.message);}
   };
@@ -1448,20 +1449,20 @@ function BackupModal({data,setData,onClose}) {
   const sevIcon={err:'X',warn:'!',info:'i'};
   return e(Modal,{title:'',onClose},
     e('div',{style:{display:'flex',borderBottom:'1px solid '+C.border,marginBottom:18,marginTop:-6}},
-      tabBtn('drive','☁️ '+t(lang2,'supabaseTab')),
-      tabBtn('diagnostic','🔍 '+t(lang2,'diagnosticTab')),
-      tabBtn('dades','🗑️ '+t(lang2,'dadesTab'))),
+      tabBtn('drive','☁️ '+t('supabaseTab')),
+      tabBtn('diagnostic','🔍 '+t('diagnosticTab')),
+      tabBtn('dades','🗑️ '+t('dadesTab'))),
     tab==='drive'&&e('div',null,
       e('div',{style:{background:C.green+'18',border:'1px solid '+C.green+'44',borderRadius:10,padding:'10px 14px',marginBottom:14,display:'flex',alignItems:'center',gap:8}},
         e('div',{style:{width:8,height:8,borderRadius:'50%',background:C.green,flexShrink:0}}),
-        e('span',{style:{color:C.green,fontSize:12,fontWeight:600}},t(lang2,'connectat')),
+        e('span',{style:{color:C.green,fontSize:12,fontWeight:600}},t('connectat')),
         e('span',{style:{color:C.dim,fontSize:11}},'Sincronitzacio entre dispositius activa')),
       e('button',{onClick:handleSbSave,disabled:sbStatus==='loading',
         style:{width:'100%',background:C.accent,color:C.bg,border:'none',borderRadius:10,padding:'11px 0',fontWeight:800,fontSize:13,cursor:sbStatus==='loading'?'not-allowed':'pointer',fontFamily:'inherit',marginBottom:10,opacity:sbStatus==='loading'?.6:1}},
-        sbStatus==='loading'?'Desant...':t(lang2,'desaServidor')),
+        sbStatus==='loading'?'Desant...':t('desaServidor')),
       e('button',{onClick:handleSbLoad,disabled:sbStatus==='loading',
         style:{width:'100%',background:'transparent',border:'1px solid '+C.border,color:C.dim,borderRadius:10,padding:'10px 0',fontWeight:700,fontSize:12,cursor:sbStatus==='loading'?'not-allowed':'pointer',fontFamily:'inherit',marginBottom:12,opacity:sbStatus==='loading'?.6:1}},
-        t(lang2,'carregaServidor')),
+        t('carregaServidor')),
       e('div',{style:{background:C.surface,border:'1px solid '+C.border,borderRadius:10,padding:14}},
         e('div',{style:{color:C.dim,fontSize:10,fontWeight:600,marginBottom:8,textTransform:'uppercase'}},'Com funciona'),
         e('div',{style:{color:C.dim,fontSize:12,lineHeight:1.7}},
@@ -1472,7 +1473,7 @@ function BackupModal({data,setData,onClose}) {
       diagIssues===null&&e('div',{style:{textAlign:'center',padding:20,color:C.dim}},'Analitzant...'),
       diagIssues&&diagIssues.length===0&&e('div',{style:{textAlign:'center',padding:24}},
         e('div',{style:{fontSize:32,marginBottom:8}},'✓'),
-        e('div',{style:{color:C.green,fontWeight:700,fontSize:14,marginBottom:4}},t(lang2,'totCorrecte')),
+        e('div',{style:{color:C.green,fontWeight:700,fontSize:14,marginBottom:4}},t('totCorrecte')),
         e('div',{style:{color:C.dim,fontSize:12}},'No shan detectat errors ni inconsistencies.')),
       diagIssues&&diagIssues.length>0&&e('div',null,
         e('div',{style:{display:'flex',gap:12,marginBottom:14}},
@@ -1492,12 +1493,12 @@ function BackupModal({data,setData,onClose}) {
                 e('div',{style:{color:C.dim,fontSize:10,marginTop:3}},e('span',{style:{color:sevColor[issue.sev],opacity:.7}},issue.cat),' · '+issue.fix)))))))),
     tab==='dades'&&e('div',null,
       e('div',{style:{background:C.red+'11',border:'1px solid '+C.red+'33',borderRadius:12,padding:18,marginBottom:12}},
-        e('div',{style:{fontWeight:700,color:C.red,fontSize:13,marginBottom:6}},t(lang2,'zonaPerill')),
+        e('div',{style:{fontWeight:700,color:C.red,fontSize:13,marginBottom:6}},t('zonaPerill')),
         e('div',{style:{color:C.dim,fontSize:12,lineHeight:1.6,marginBottom:14}},'Aquesta accio esborrar TOTES les dades permanentment. Assegura-te de tenir backup primer.'),
         e('button',{
-          onClick:async()=>{if(window.confirm(t(lang2,'confirmaEsborrar'))){if(window.confirm(t(lang2,'confirmaEsborrar2'))){setData(INIT);try{await SB_SAVE(INIT);}catch{}onClose();}}},
+          onClick:async()=>{if(window.confirm(t('confirmaEsborrar'))){if(window.confirm(t('confirmaEsborrar2'))){setData(INIT);try{await SB_SAVE(INIT);}catch{}onClose();}}},
           style:{width:'100%',background:C.red,color:'#fff',border:'none',borderRadius:10,padding:'12px 0',fontWeight:800,fontSize:13,cursor:'pointer',fontFamily:'inherit'}
-        },t(lang2,'esborraDades')))),
+        },t('esborraDades')))),
     e('button',{onClick:onClose,style:{marginTop:16,width:'100%',background:'transparent',border:`1px solid ${C.border}`,color:C.dim,borderRadius:9,padding:'9px 0',cursor:'pointer',fontSize:12,fontFamily:'inherit'}},'Tancar'));
 }
 
@@ -1511,10 +1512,11 @@ function App() {
   const [saveStatus,setSaveStatus]=useState('idle');
   const [theme,setTheme]=useState(()=>localStorage.getItem('fintrack-theme')||'dark');
   const [lang,setLang]=useState(()=>localStorage.getItem('fintrack-lang')||'ca');
-  useEffect(()=>{localStorage.setItem('fintrack-lang',lang);},[lang]);
+  useEffect(()=>{localStorage.setItem('fintrack-lang',lang);_lang=lang;},[lang]);
   const [data,setData]=useState(INIT);
   C = theme==='dark' ? {...DARK} : {...LIGHT};
   document.body.style.background = C.bg;
+  _lang = lang; // keep global in sync
   const [loaded,setLoaded]=useState(false);
   const [loadError,setLoadError]=useState('');
   const [userHasEdited,setUserHasEdited]=useState(false);
@@ -1620,9 +1622,9 @@ function App() {
         e('div',null,
           e('div',{style:{fontSize:17,fontWeight:900,letterSpacing:-.5}},e('span',{style:{color:C.accent}},'fin'),e('span',{style:{color:C.white}},'track')),
           e('div',{style:{display:'flex',alignItems:'center',gap:4}},
-            e('div',{style:{color:C.dim,fontSize:8,letterSpacing:1.5,textTransform:'uppercase'}},t(lang,'gestorPersonal')),
-            saveStatus==='saving'&&e('span',{style:{color:C.accent,fontSize:8}},' ● '+t(lang,'desant')),
-            saveStatus==='ok'&&e('span',{style:{color:C.green,fontSize:8}},' ✓ '+t(lang,'desat')),
+            e('div',{style:{color:C.dim,fontSize:8,letterSpacing:1.5,textTransform:'uppercase'}},t('gestorPersonal')),
+            saveStatus==='saving'&&e('span',{style:{color:C.accent,fontSize:8}},' ● '+t('desant')),
+            saveStatus==='ok'&&e('span',{style:{color:C.green,fontSize:8}},' ✓ '+t('desat')),
             saveStatus==='error'&&e('span',{style:{color:C.red,fontSize:8}},' ✗ error'),
             loadError&&e('span',{style:{color:C.red,fontSize:8}},' ⚠ '+loadError))),
         e('div',{style:{display:'flex',gap:6,alignItems:'center'}},
@@ -1642,16 +1644,16 @@ function App() {
             title:'Backup / Restaurar',
             style:{background:'transparent',border:`1px solid ${hBackup?C.yellow+'77':C.border}`,color:hBackup?C.yellow:C.dim,borderRadius:7,width:32,height:32,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,transition:'all .2s'}
           },'💾'),
-          e('button',{onClick:async()=>{if(window.confirm(t(lang,'tancarSessio'))){await sbSignOut();}},
+          e('button',{onClick:async()=>{if(window.confirm(t('tancarSessio'))){await sbSignOut();}},
             style:{background:C.red+'18',border:'1px solid '+C.red+'55',color:C.red,borderRadius:7,padding:'0 10px',height:32,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,fontFamily:'inherit',gap:4,whiteSpace:'nowrap'}
-          },e('span',null,'↪'),' '+t(lang,'sortir')))),
+          },e('span',null,'↪'),' '+t('sortir')))),
       e('div',{style:{display:'flex',gap:0,padding:'0 8px',overflowX:'auto',borderBottom:'2px solid '+C.border,scrollbarWidth:'none'}},
         [{id:'dashboard',icon:'⚡'},{id:'fixes',icon:'📌'},{id:'variables',icon:'📊'},{id:'inversions',icon:'📈'},{id:'bens',icon:'🏛️'},{id:'fire',icon:'🔥'}].map(tb=>e('button',{key:tb.id,onClick:()=>setTab(tb.id),
           style:{background:'transparent',color:tab===tb.id?C.accent:C.dim,border:'none',
             borderBottom:tab===tb.id?'3px solid '+C.accent:'3px solid transparent',marginBottom:'-2px',
             padding:'14px 18px',cursor:'pointer',fontWeight:tab===tb.id?800:600,fontSize:13,
             whiteSpace:'nowrap',transition:'all .15s',fontFamily:'inherit',letterSpacing:.1}
-        },tb.icon+' '+(T[lang]?.[tb.id]||tb.id)))),
+        },tb.icon+' '+(T[_lang]?.[tb.id]||tb.id)))),
       e('div',{style:{padding:'16px 14px'}},
         tab==='dashboard'&&e(Dashboard,{data,setData:setDataSafe,setTab}),
         tab==='fixes'&&e(GastosFixes,{data,setData:setDataSafe}),
