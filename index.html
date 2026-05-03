@@ -2113,11 +2113,7 @@ function BackupModal({data,setData,onClose}) {
     ),
 
     tab==='dades' && e('div',null,
-      // Canviar PIN
-      e('div',{style:{background:C.surface,border:'1px solid '+C.border,borderRadius:12,padding:16,marginBottom:12}},
-        e('div',{style:{fontWeight:700,color:C.text,fontSize:13,marginBottom:10}},'Canviar PIN'),
-        e(PinChange,{currentPin:data.pin||DEFAULT_PIN,onSavePin:p=>setDataSafe(d=>({...d,pin:p}))})
-      ),
+
       e('div',{style:{background:C.red+'11',border:'1px solid '+C.red+'33',borderRadius:12,padding:18,marginBottom:12}},
         e('div',{style:{fontWeight:700,color:C.red,fontSize:13,marginBottom:6}},'Zona de perill'),
         e('div',{style:{color:C.dim,fontSize:12,lineHeight:1.6,marginBottom:14}},
@@ -2249,7 +2245,7 @@ function App() {
     // Listen for auth changes
     const {data:{subscription}} = sbClient.auth.onAuthStateChange((_,session)=>{
       setAuthUser(session?.user||null);
-      if(!session?.user) {setUnlocked(false);setCorrectPin(null);}
+
     });
     return ()=>subscription.unsubscribe();
   },[]);
@@ -2327,15 +2323,12 @@ function App() {
         const d = await SB_LOAD();
         if(d && typeof d.ingressos !== 'undefined') {
           setData({...INIT,...d});
-          setCorrectPin(d.pin||DEFAULT_PIN);
         } else {
           setData(INIT);
-          setCorrectPin(DEFAULT_PIN);
         }
         setLoaded(true);
       } catch(e) {
         setLoadError('No es pot connectar a Supabase: '+e.message);
-        setCorrectPin(DEFAULT_PIN);
         setLoaded(true);
       }
     })();
@@ -2397,14 +2390,7 @@ function App() {
   );
   // No autenticat → pantalla login/registre
   if(!authUser) return e(AuthScreen,{onAuth:async()=>{const u=await sbGetUser();setAuthUser(u);}});
-  // Autenticat però PIN no carregat
-  if(correctPin===null) return e('div',{style:{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center'}},
-    e('div',{style:{textAlign:'center'}},
-      e('div',{style:{fontSize:26,fontWeight:900,marginBottom:12}},e('span',{style:{color:C.accent}},'fin'),e('span',{style:{color:C.white}},'track')),
-      e('div',{style:{width:28,height:28,border:'3px solid '+C.border,borderTopColor:C.accent,borderRadius:'50%',animation:'spin .8s linear infinite',margin:'0 auto'}})
-    )
-  );
-  if(!unlocked) return e(PinScreen,{onUnlock:()=>setUnlocked(true),correctPin});
+
 
   if(!loaded) return e('div',{style:{minHeight:'100vh',background:C.bg,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:14,fontFamily:"'Sora',sans-serif"}},
     e('div',{style:{fontSize:26,fontWeight:900}},e('span',{style:{color:C.accent}},'fin'),e('span',{style:{color:C.white}},'track')),
