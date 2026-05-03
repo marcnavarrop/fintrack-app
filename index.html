@@ -29,7 +29,6 @@
 <body>
 <div id="root"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 // Show loading screen
 document.getElementById('root').innerHTML = 
@@ -47,10 +46,11 @@ function loadScript(src, cb) {
   document.head.appendChild(s);
 }
 
+loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js', function() {
 loadScript('https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js', function() {
 loadScript('https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js', function() {
   startApp();
-});});
+});});});
 
 function startApp() {
 try {
