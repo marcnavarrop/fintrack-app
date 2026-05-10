@@ -883,6 +883,47 @@ function GastosFixes({data,setData}) {
       e(RowBtns,{onSave:desar,onCancel:()=>setModal(null)})));
 }
 
+// ── CatCard: category card for Variables (needs own state for open/close) ────
+function CatCard({cat, gastat, pressupost, col, pct, over, regs, mesActiu, editCat, setEditCat, setGastat, setData, setForm, setModal}) {
+  const [obert, setObert] = useState(false);
+  return e('div',{style:{background:C.surface,border:'1px solid '+(over?C.red+'55':C.border),borderRadius:12,padding:'11px 14px'}},
+    e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:pct!==null?7:0}},
+      e('div',{style:{display:'flex',alignItems:'center',gap:7}},
+        e('div',{style:{width:9,height:9,borderRadius:2,background:col,flexShrink:0}}),
+        e('span',{style:{fontWeight:700,color:C.text,fontSize:12}},cat),
+        e('button',{onClick:()=>{setForm({nom:cat,pressupost:String(pressupost)});setModal('editPres');},
+          style:{background:'none',border:'none',color:C.dim,cursor:'pointer',fontSize:11,padding:0}},'⚙️')),
+      e('div',{style:{display:'flex',alignItems:'center',gap:6}},
+        over&&e('span',{style:{color:C.red,fontSize:9,fontWeight:700}},'+'+fmt(gastat-pressupost)),
+        editCat===cat
+          ?e('span',{style:{display:'inline-flex',alignItems:'center',gap:4}},
+              e('input',{autoFocus:true,type:'number',defaultValue:String(gastat),
+                onKeyDown:ev=>{if(ev.key==='Enter'){setGastat(cat,ev.target.value);setEditCat(null);}if(ev.key==='Escape')setEditCat(null);},
+                style:{background:C.bg,border:'1px solid '+C.accent,borderRadius:6,color:C.text,padding:'3px 7px',fontSize:12,width:80,outline:'none',fontFamily:'monospace',fontWeight:700,textAlign:'right'}}),
+              e('button',{onClick:ev=>{setGastat(cat,ev.target.previousSibling?.value??gastat);setEditCat(null);},style:{background:C.accent,border:'none',color:C.bg,borderRadius:5,padding:'3px 7px',cursor:'pointer',fontSize:11,fontWeight:800}},'✓'),
+              e('button',{onClick:()=>setEditCat(null),style:{background:'none',border:'none',color:C.dim,cursor:'pointer',fontSize:13}},'✕'))
+          :e('span',{onClick:()=>setEditCat(cat),style:{color:over?C.red:C.text,fontFamily:'monospace',fontWeight:800,fontSize:14,cursor:'pointer',borderBottom:'1px dashed '+C.border}},fmt(gastat)),
+        pressupost>0&&e('span',{style:{color:C.dim,fontSize:10}},'/'+fmt(pressupost)),
+        pct!==null&&e('span',{style:{background:col+'22',color:col,borderRadius:4,padding:'0 5px',fontSize:9,fontWeight:700}},pct.toFixed(0)+'%'),
+        e(DeleteBtn,{nom:cat,onDelete:()=>setData(d=>{const pp={...(d.pressupostosVariables||{})};delete pp[cat];const h={...(d.historialVariables||{})};Object.keys(h).forEach(m=>{const x={...h[m]};delete x[cat];h[m]=x;});return{...d,pressupostosVariables:pp,historialVariables:h};})}))),
+    pct!==null&&e('div',{style:{background:C.border,borderRadius:3,height:5,overflow:'hidden',marginBottom:regs.length>0?6:0}},
+      e('div',{style:{width:pct+'%',height:'100%',background:over?C.red:pct>80?C.yellow:col,borderRadius:3,transition:'width .5s'}})),
+    regs.length>0&&e('div',null,
+      e('button',{onClick:()=>setObert(o=>!o),style:{width:'100%',background:'none',border:'none',color:C.dim,cursor:'pointer',fontSize:10,fontFamily:'inherit',textAlign:'left',padding:'4px 0',display:'flex',alignItems:'center',gap:4}},
+        e('span',{style:{transition:'transform .2s',display:'inline-block',transform:obert?'rotate(90deg)':'rotate(0deg)'}},'›'),
+        regs.length+' despesa'+(regs.length!==1?'s':''),
+        e('span',{style:{marginLeft:'auto',color:col,fontWeight:700}},fmt(regs.reduce((s,r)=>s+r.import,0)))),
+      obert&&e('div',{style:{borderTop:'1px solid '+C.border,paddingTop:8,display:'grid',gap:5}},
+        regs.map(r=>e('div',{key:r.id,style:{display:'flex',alignItems:'center',gap:8,padding:'5px 0'}},
+          e('span',{style:{color:C.dim,fontSize:10,minWidth:70}},r.data),
+          r.nota&&e('span',{style:{color:C.dim,fontSize:10,flex:1,fontStyle:'italic'}},r.nota),
+          e('span',{style:{color:C.text,fontFamily:'monospace',fontWeight:700,fontSize:12,marginLeft:'auto'}},fmt(r.import)),
+          e('button',{
+            onClick:()=>setData(d=>{const prev2=(d.historialVariables?.[mesActiu]?.[cat])||0;return{...d,despesesRegistre:(d.despesesRegistre||[]).filter(x=>x.id!==r.id),historialVariables:{...(d.historialVariables||{}),[mesActiu]:{...(d.historialVariables?.[mesActiu]||{}),[cat]:Math.max(0,Math.round((prev2-r.import)*100)/100)}}};}),
+            style:{marginLeft:'auto',background:'none',border:'none',color:C.red+'66',cursor:'pointer',fontSize:13,padding:0}},'✕'))))));
+}
+
+
 // ── GASTOS VARIABLES ──────────────────────────────────────────────────────────
 function GastosVariables({data,setData}) {
   const avuiKey=mesKey();
@@ -942,42 +983,8 @@ function GastosVariables({data,setData}) {
         const pct=pressupost>0?Math.min(100,(gastat/pressupost)*100):null;
         const col=colorPerCat(cat);
         const regs=(data.despesesRegistre||[]).filter(r=>r.cat===cat&&r.mes===mesActiu).sort((a,b)=>b.data.localeCompare(a.data));
-        const [obert,setObert]=useState(false);
-        return e('div',{key:cat,style:{background:C.surface,border:'1px solid '+(over?C.red+'55':C.border),borderRadius:12,padding:'11px 14px'}},
-          e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:pct!==null?7:0}},
-            e('div',{style:{display:'flex',alignItems:'center',gap:7}},
-              e('div',{style:{width:9,height:9,borderRadius:2,background:col,flexShrink:0}}),
-              e('span',{style:{fontWeight:700,color:C.text,fontSize:12}},cat),
-              e('button',{onClick:()=>{setForm({nom:cat,pressupost:String(pressupost)});setModal('editPres');},
-                style:{background:'none',border:'none',color:C.dim,cursor:'pointer',fontSize:11,padding:0}},'⚙️')),
-            e('div',{style:{display:'flex',alignItems:'center',gap:6}},
-              over&&e('span',{style:{color:C.red,fontSize:9,fontWeight:700}},'+'+fmt(gastat-pressupost)),
-              editCat===cat
-                ?e('span',{style:{display:'inline-flex',alignItems:'center',gap:4}},
-                    e('input',{autoFocus:true,type:'number',defaultValue:String(gastat),
-                      onKeyDown:ev=>{if(ev.key==='Enter'){setGastat(cat,ev.target.value);setEditCat(null);}if(ev.key==='Escape')setEditCat(null);},
-                      style:{background:C.bg,border:'1px solid '+C.accent,borderRadius:6,color:C.text,padding:'3px 7px',fontSize:12,width:80,outline:'none',fontFamily:'monospace',fontWeight:700,textAlign:'right'}}),
-                    e('button',{onClick:ev=>{setGastat(cat,ev.target.previousSibling?.value??gastat);setEditCat(null);},style:{background:C.accent,border:'none',color:C.bg,borderRadius:5,padding:'3px 7px',cursor:'pointer',fontSize:11,fontWeight:800}},'✓'),
-                    e('button',{onClick:()=>setEditCat(null),style:{background:'none',border:'none',color:C.dim,cursor:'pointer',fontSize:13}},'✕'))
-                :e('span',{onClick:()=>setEditCat(cat),style:{color:over?C.red:C.text,fontFamily:'monospace',fontWeight:800,fontSize:14,cursor:'pointer',borderBottom:'1px dashed '+C.border}},fmt(gastat)),
-              pressupost>0&&e('span',{style:{color:C.dim,fontSize:10}},'/'+fmt(pressupost)),
-              pct!==null&&e('span',{style:{background:col+'22',color:col,borderRadius:4,padding:'0 5px',fontSize:9,fontWeight:700}},pct.toFixed(0)+'%'),
-              e(DeleteBtn,{nom:cat,onDelete:()=>setData(d=>{const pp={...(d.pressupostosVariables||{})};delete pp[cat];const h={...(d.historialVariables||{})};Object.keys(h).forEach(m=>{const x={...h[m]};delete x[cat];h[m]=x;});return{...d,pressupostosVariables:pp,historialVariables:h};})}))),
-          pct!==null&&e('div',{style:{background:C.border,borderRadius:3,height:5,overflow:'hidden',marginBottom:regs.length>0?6:0}},
-            e('div',{style:{width:pct+'%',height:'100%',background:over?C.red:pct>80?C.yellow:col,borderRadius:3,transition:'width .5s'}})),
-          regs.length>0&&e('div',null,
-            e('button',{onClick:()=>setObert(o=>!o),style:{width:'100%',background:'none',border:'none',color:C.dim,cursor:'pointer',fontSize:10,fontFamily:'inherit',textAlign:'left',padding:'4px 0',display:'flex',alignItems:'center',gap:4}},
-              e('span',{style:{transition:'transform .2s',display:'inline-block',transform:obert?'rotate(90deg)':'rotate(0deg)'}},'›'),
-              regs.length+' despesa'+(regs.length!==1?'s':''),
-              e('span',{style:{marginLeft:'auto',color:col,fontWeight:700}},fmt(regs.reduce((s,r)=>s+r.import,0)))),
-            obert&&e('div',{style:{borderTop:'1px solid '+C.border,paddingTop:8,display:'grid',gap:5}},
-              regs.map(r=>e('div',{key:r.id,style:{display:'flex',alignItems:'center',gap:8,padding:'5px 0'}},
-                e('span',{style:{color:C.dim,fontSize:10,minWidth:70}},r.data),
-                r.nota&&e('span',{style:{color:C.dim,fontSize:10,flex:1,fontStyle:'italic'}},r.nota),
-                e('span',{style:{color:C.text,fontFamily:'monospace',fontWeight:700,fontSize:12,marginLeft:'auto'}},fmt(r.import)),
-                e('button',{onClick:()=>setData(d=>{const prev2=(d.historialVariables?.[mesActiu]?.[cat])||0;return{...d,despesesRegistre:(d.despesesRegistre||[]).filter(x=>x.id!==r.id),historialVariables:{...(d.historialVariables||{}),[mesActiu]:{...(d.historialVariables?.[mesActiu]||{}),[cat]:Math.max(0,Math.round((prev2-r.import)*100)/100)}}};}),
-                  style:{marginLeft:'auto',background:'none',border:'none',color:C.red+'66',cursor:'pointer',fontSize:13,padding:0}},'✕'))))));
-      })),
+        return e(CatCard,{key:cat,cat,gastat,pressupost,col,pct,over,regs,mesActiu,editCat,setEditCat,setGastat,setData,setForm,setModal});
+      }),
     modal==='nouGasto'&&e(Modal,{title:t('nouaDespesa2')||'Nova despesa',onClose:()=>setModal(null)},
       e('div',{style:{marginBottom:12}},
         e('div',{style:{color:C.dim,fontSize:10,fontWeight:600,marginBottom:7,textTransform:'uppercase'}},'Categoria'),
@@ -1028,7 +1035,7 @@ function GastosVariables({data,setData}) {
       e(RowBtns,{onSave:()=>{
         if(!form.pressupost||isNaN(form.pressupost)||+form.pressupost<=0){setErrs({pressupost:'Import vàlid'});return;}
         setData(d=>({...d,pressupostosVariables:{...(d.pressupostosVariables||{}),[form.nom]:+form.pressupost}}));
-        setModal(null);},onCancel:()=>setModal(null)})));
+        setModal(null);},onCancel:()=>setModal(null)}))));
 }
 
 // ── INVERSIONS ────────────────────────────────────────────────────────────────
