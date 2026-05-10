@@ -929,8 +929,12 @@ function GastosVariables({data,setData}) {
   const avuiKey=mesKey();
   const hist=data.historialVariables||{};
   const pressupostos=data.pressupostosVariables||{};
-  const allMesos=[...new Set([...Object.keys(hist),avuiKey])].sort();
-  const [mesActiu,setMesActiu]=useState(allMesos[allMesos.length-1]);
+  // Include past months with data + current + 3 future months
+  const futurMesos = [1,2,3].map(n=>{const d=new Date();d.setMonth(d.getMonth()+n);return mesKey(d);});
+  const allMesos=[...new Set([...Object.keys(hist),avuiKey,...futurMesos])].sort();
+  const [mesActiu,setMesActiu]=useState(avuiKey);
+  const esFutur = mesActiu > avuiKey;
+  const esAvui = mesActiu === avuiKey;
   const [modal,setModal]=useState(null);
   const [form,setForm]=useState({nom:'',pressupost:''});
   const [errs,setErrs]=useState({});
@@ -960,10 +964,16 @@ function GastosVariables({data,setData}) {
       e('button',{onClick:()=>setMesActiu(allMesos[mesIdx-1]),disabled:mesIdx===0,
         style:{background:'none',border:'1px solid '+C.border,color:mesIdx===0?C.border:C.dim,borderRadius:7,width:30,height:30,cursor:mesIdx===0?'default':'pointer',fontSize:14}},'‹'),
       e('div',{style:{flex:1,textAlign:'center'}},
-        e('div',{style:{color:C.white,fontWeight:700,fontSize:13}},mesLabel(mesActiu)),
-        mesActiu===avuiKey&&e('div',{style:{color:C.accent,fontSize:9}},'mes actual')),
+        e('div',{style:{color:esFutur?C.yellow:C.white,fontWeight:700,fontSize:13}},mesLabel(mesActiu)),
+        esAvui&&e('div',{style:{color:C.accent,fontSize:9}},'mes actual'),
+        esFutur&&e('div',{style:{color:C.yellow,fontSize:9}},'📅 mes futur — despeses programades')),
       e('button',{onClick:()=>setMesActiu(allMesos[mesIdx+1]),disabled:mesIdx===allMesos.length-1,
         style:{background:'none',border:'1px solid '+C.border,color:mesIdx===allMesos.length-1?C.border:C.dim,borderRadius:7,width:30,height:30,cursor:mesIdx===allMesos.length-1?'default':'pointer',fontSize:14}},'›')),
+    esFutur && e('div',{style:{background:C.yellow+'15',border:'1px solid '+C.yellow+'44',borderRadius:10,padding:'10px 14px',marginBottom:8,display:'flex',alignItems:'center',gap:8}},
+      e('span',{style:{fontSize:16}},'📅'),
+      e('div',null,
+        e('div',{style:{color:C.yellow,fontSize:12,fontWeight:700}},'Mes futur: '+mesLabel(mesActiu)),
+        e('div',{style:{color:C.dim,fontSize:11}},'Les categories i límits es mantenen. Els imports comencen a zero per a aquest mes.'))),
     e('div',{style:{display:'grid',gap:8}},
       cats.length===0&&e('div',{style:{color:C.dim,fontSize:12,textAlign:'center',padding:24}},t('capCategoria')),
       cats.length>0&&totalP>0&&e('div',{style:{background:C.surface,border:'1px solid '+C.border,borderRadius:12,padding:'12px 14px',marginBottom:4}},
