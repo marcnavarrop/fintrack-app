@@ -579,22 +579,33 @@ function Modal({title,onClose,children}) {
     e('div',{
       onClick:ev=>ev.stopPropagation(),
       onTouchStart:ev=>{
-        // Only start drag if touching the handle area (top 50px)
-        if(ev.touches[0].clientY - ev.currentTarget.getBoundingClientRect().top < 50) {
-          startY.current=ev.touches[0].clientY;isDragging.current=false;
-          ev.preventDefault();
-        }
+        startY.current=ev.touches[0].clientY;
+        isDragging.current=false;
       },
       onTouchMove:ev=>{
         if(startY.current===null)return;
         const dy=ev.touches[0].clientY-startY.current;
-        if(dy>8)isDragging.current=true;
-        if(dy>0){ev.currentTarget.style.transform='translateY('+Math.min(dy,200)+'px)';ev.preventDefault();}
+        if(dy<0){startY.current=null;return;} // scrolling up - ignore
+        if(dy>5) isDragging.current=true;
+        if(isDragging.current){
+          ev.currentTarget.style.transition='none';
+          ev.currentTarget.style.transform='translateY('+dy+'px)';
+          ev.currentTarget.style.opacity=String(Math.max(0.5,1-dy/400));
+        }
       },
       onTouchEnd:ev=>{
-        const dy=startY.current!==null?ev.changedTouches[0].clientY-startY.current:0;
-        ev.currentTarget.style.transform='';
-        if(dy>60&&isDragging.current) onClose();
+        if(!isDragging.current){startY.current=null;return;}
+        const dy=ev.changedTouches[0].clientY-startY.current;
+        if(dy>80){
+          ev.currentTarget.style.transition='transform .25s ease, opacity .25s ease';
+          ev.currentTarget.style.transform='translateY(100%)';
+          ev.currentTarget.style.opacity='0';
+          setTimeout(onClose,240);
+        } else {
+          ev.currentTarget.style.transition='transform .3s ease, opacity .3s ease';
+          ev.currentTarget.style.transform='';
+          ev.currentTarget.style.opacity='1';
+        }
         startY.current=null;isDragging.current=false;
       },
       style:{background:C.surface,border:'1px solid '+C.border,borderRadius:'16px 16px 0 0',padding:22,width:'100%',maxWidth:500,maxHeight:'88vh',overflowY:'auto',transition:'transform .15s',paddingBottom:'calc(22px + env(safe-area-inset-bottom))',overscrollBehavior:'none'}},
@@ -642,7 +653,11 @@ function Dashboard({data,setData,setTab=()=>{}}) {
     : esFuturDash
       ? fixesMesSelec.reduce((s,g)=>s+iMensual(g),0)
       : (snap?.totalFixes||0);
-  const totalVars  = esActual ? Object.values(data.historialVariables?.[avuiKey]||{}).reduce((s,v)=>s+v,0) : (snap?.totalVars||0);
+  const totalVars  = esActual
+    ? Object.values(data.historialVariables?.[avuiKey]||{}).reduce((s,v)=>s+v,0)
+    : esFuturDash
+      ? Object.values(data.historialVariables?.[mesSelec]||{}).reduce((s,v)=>s+v,0)
+      : (snap?.totalVars||0);
   // Ingressos extra del mes seleccionat - always filter by mesSelec
   const ingresosExtraMes = !esActual && !esFuturDash
     ? (snap?.ingresosExtra||[])
@@ -714,9 +729,9 @@ function Dashboard({data,setData,setTab=()=>{}}) {
           e('div',{style:{color:estalvi>0?C.green:C.red,fontSize:16,fontWeight:800,fontFamily:'monospace'}},((nomina+ingresosExtraTotal)>0?Math.round((estalvi/(nomina+ingresosExtraTotal))*100):0)+'%'),
           e('div',{style:{color:C.dim,fontSize:10}},e(Money,null,fmt(estalvi)),'/mes'))),
       // Ingressos extra (inline a la mateixa card)
-      esActual && (data.ingresosExtra||[]).length>0 && e('div',{style:{borderTop:'1px solid '+C.border,marginTop:10,paddingTop:8}},
+      ingresosExtraMes.length>0 && e('div',{style:{borderTop:'1px solid '+C.border,marginTop:10,paddingTop:8}},
         e('div',{style:{color:C.dim,fontSize:9,fontWeight:600,textTransform:'uppercase',letterSpacing:.5,marginBottom:6}},'💸 '+t('ingressosExtra')),
-        (data.ingresosExtra||[]).sort((a,b)=>b.data.localeCompare(a.data)).map(x=>
+        ingresosExtraMes.sort((a,b)=>b.data.localeCompare(a.data)).map(x=>
           e('div',{key:x.id,style:{display:'flex',alignItems:'center',gap:8,marginBottom:4}},
             e('span',{style:{color:C.dim,fontSize:10,minWidth:75}},x.data),
             e('span',{style:{color:C.text,fontSize:11,flex:1}},x.nom),
