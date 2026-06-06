@@ -628,11 +628,19 @@ function Dashboard({data,setData,setTab=()=>{}}) {
   const totalCash  = esActual ? (data.cash||0)                                  : (snap?.cash||0);
   const totalBens  = esActual ? data.bens.reduce((s,b)=>s+b.valorActual,0)      : (snap?.totalBens||0);
   const totalDeute = esActual ? data.bens.reduce((s,b)=>s+(b.deute||0),0)       : (snap?.totalDeute||0);
-  const totalFixes = esActual ? data.gastosFixes.reduce((s,g)=>s+iMensual(g),0) : (snap?.totalFixes||0);
+  const fixesMesSelec = (!esActual && !esFuturDash)
+    ? null  // from snapshot
+    : ((data.historialFixes||{})[mesSelec] || data.gastosFixes);
+  const totalFixes = esActual
+    ? data.gastosFixes.reduce((s,g)=>s+iMensual(g),0)
+    : esFuturDash
+      ? fixesMesSelec.reduce((s,g)=>s+iMensual(g),0)
+      : (snap?.totalFixes||0);
   const totalVars  = esActual ? Object.values(data.historialVariables?.[avuiKey]||{}).reduce((s,v)=>s+v,0) : (snap?.totalVars||0);
   // Ingressos extra del mes seleccionat
+  // Uses x.mes field (YYYY-MM) if available, falls back to x.data prefix
   const ingresosExtraMes = esActual
-    ? (data.ingresosExtra||[]).filter(x=>x.data && x.data.startsWith(avuiKey))
+    ? (data.ingresosExtra||[]).filter(x=>(x.mes||x.data||'').startsWith(avuiKey))
     : (snap?.ingresosExtra||[]);
   const ingresosExtraTotal = ingresosExtraMes.reduce((s,x)=>s+x.import,0);
   const nomina     = esActual ? data.ingressos : (snap?.ingressos||data.ingressos);
@@ -720,7 +728,7 @@ function Dashboard({data,setData,setTab=()=>{}}) {
           if(!nom2)return;
           const imp2=parseFloat(window.prompt(t('prompt2')));
           if(isNaN(imp2)||imp2<=0)return;
-          setData(d=>({...d,ingresosExtra:[...(d.ingresosExtra||[]),{id:uid(),nom:nom2.trim(),import:imp2,data:new Date().toISOString().slice(0,10)}]}));
+          setData(d=>({...d,ingresosExtra:[...(d.ingresosExtra||[]),{id:uid(),nom:nom2.trim(),import:imp2,mes:mesSelec,data:mesSelec+'-01'}]}));
         },style:{background:C.accentDim,border:'1px solid '+C.accent+'33',color:C.accent,borderRadius:7,padding:'5px 14px',cursor:'pointer',fontSize:11,fontWeight:700,fontFamily:'inherit'}},t('ingresExtra')))),
     e(Card,{style:{marginBottom:12,padding:'12px 14px'}},
       e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
@@ -801,19 +809,36 @@ function Dashboard({data,setData,setTab=()=>{}}) {
 }
 // ── GASTOS FIXES ──────────────────────────────────────────────────────────────
 function GastosFixes({data,setData}) {
+  const avuiKey = mesKey();
+  // Mesos: tots els que tenen historial + actual + 3 futurs
+  const histFixes = data.historialFixes||{};
+  const futursFixes = [1,2,3].map(n=>{const d=new Date();d.setMonth(d.getMonth()+n);return mesKey(d);});
+  const mesosFixes = [...new Set([...Object.keys(histFixes),avuiKey,...futursFixes])].sort();
+  const [mesSelecF,setMesSelecF]=useState(avuiKey);
+  const mesIdxF = mesosFixes.indexOf(mesSelecF);
+  const esActualF = mesSelecF === avuiKey;
+  const esFuturF = mesSelecF > avuiKey;
+
+  // Get fixes for selected month
+  // Future: use current gastosFixes as base (editable)
+  // Past: use historialFixes[month] if exists, else current
+  const fixesPerMes = !esActualF && histFixes[mesSelecF]
+    ? histFixes[mesSelecF]
+    : data.gastosFixes;
+
   const [modal,setModal]=useState(null);
   const [form,setForm]=useState({nom:'',import:'',categoria:'',periodicitat:'mensual'});
   const [errs,setErrs]=useState({});
   const [filtreCat,setFiltreCat]=useState('Tots');
 
-  data.gastosFixes.forEach(g=>{ if(g.categoria) colorPerCat(g.categoria); });
+  fixesPerMes.forEach(g=>{ if(g.categoria) colorPerCat(g.categoria); });
   const importMensual = g => g.periodicitat==='anual' ? g.import/12 : g.import;
-  const total = data.gastosFixes.reduce((s,g)=>s+importMensual(g),0);
-  const cats = ['Tots',...new Set(data.gastosFixes.map(g=>g.categoria))];
-  const catsList = [...new Set(data.gastosFixes.map(g=>g.categoria))];
-  const byCat = catsList.map(c=>({
+  const total = fixesPerMes.reduce((s,g)=>s+importMensual(g),0);
+  const cats = ['Tots',...new Set(fixesPerMes.map(g=>g.categoria))];
+  const catsList = [...new Set(fixesPerMes.map(g=>g.categoria))];
+  const byCat = catsList.map(c=>({  // byCat
     cat:c,
-    total:data.gastosFixes.filter(g=>g.categoria===c).reduce((s,g)=>s+importMensual(g),0),
+    total:fixesPerMes.filter(g=>g.categoria===c).reduce((s,g)=>s+importMensual(g),0),
     color:colorPerCat(c)
   }));
 
@@ -839,13 +864,25 @@ function GastosFixes({data,setData}) {
         e('div',{style:{color:C.dim,fontSize:10,letterSpacing:1}},t('totalMensual')),
         e('div',{style:{color:C.red,fontSize:24,fontWeight:800,fontFamily:'monospace'}},e(Money,null,fmt(total)))),
       e(Btn,{onClick:()=>obrir('nou')},t('afegir'))),
-    data.gastosFixes.length>0 && e('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}},
+    fixesPerMes.length>0 && e('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}},
       e(Card,null,
         e('div',{style:{fontWeight:700,fontSize:10,color:C.dim,marginBottom:9,textTransform:'uppercase'}},t('perCategoria')),
         e(HBarChart,{data:byCat,height:Math.max(80,byCat.length*30)})),
       e(Card,null,
-        e('div',{style:{fontWeight:700,fontSize:10,color:C.dim,marginBottom:9,textTransform:'uppercase'}},t('distribucio')),
-        e(DonutChart,{data:data.gastosFixes.map(g=>({value:importMensual(g),color:g.color||colorPerCat(g.categoria)})),size:150}))),
+        e('div',{style:{fontWeight:700,fontSize:10,color:C.dim,marginBottom:9,textTransform:'uppercase'}},'Top gastos'),
+        e('div',{style:{display:'grid',gap:5}},
+          [...fixesPerMes].sort((a,b)=>importMensual(b)-importMensual(a)).slice(0,5).map(g=>{
+            const pct=total>0?Math.round((importMensual(g)/total)*100):0;
+            const col=g.color||colorPerCat(g.categoria);
+            return e('div',{key:g.id},
+              e('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:2}},
+                e('span',{style:{color:C.text,fontSize:10,fontWeight:600,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginRight:6}},g.nom),
+                e('div',{style:{display:'flex',alignItems:'center',gap:4,flexShrink:0}},
+                  e('span',{style:{color:C.text,fontSize:10,fontFamily:'monospace'}},e(Money,null,fmt(importMensual(g)))),
+                  e('span',{style:{background:col+'22',color:col,borderRadius:4,padding:'0 4px',fontSize:9,fontWeight:700}},pct+'%'))),
+              e('div',{style:{background:C.border,borderRadius:3,height:4,overflow:'hidden'}},
+                e('div',{style:{width:pct+'%',height:'100%',background:col,borderRadius:3,transition:'width .5s'}})));
+          })))),
     cats.length>2 && e('div',{style:{display:'flex',gap:5,marginBottom:10,flexWrap:'wrap'}},
       cats.map(c=>e('button',{key:c,onClick:()=>setFiltreCat(c),style:{
         background:filtreCat===c?colorPerCat(c==='Tots'?'':c)+'33':'transparent',
@@ -854,10 +891,10 @@ function GastosFixes({data,setData}) {
         borderRadius:7,padding:'4px 10px',cursor:'pointer',fontSize:10,fontFamily:'inherit',fontWeight:600
       }},c==='Tots'?'Tots':e('span',null,e('span',{style:{width:6,height:6,borderRadius:'50%',background:colorPerCat(c),display:'inline-block',marginRight:5,verticalAlign:'middle'}}),c)))),
     e('div',{style:{display:'grid',gap:16}},
-      data.gastosFixes.length===0
+      fixesPerMes.length===0
         ? e('div',{style:{color:C.dim,fontSize:12,textAlign:'center',padding:24}},t('capGastoFix'))
         : catsList.filter(c=>filtreCat==='Tots'||c===filtreCat).map(cat=>{
-            const gastosDelCat=data.gastosFixes.filter(g=>g.categoria===cat);
+            const gastosDelCat=fixesPerMes.filter(g=>g.categoria===cat);
             const totalCat=gastosDelCat.reduce((s,g)=>s+importMensual(g),0);
             const col=colorPerCat(cat);
             return e('div',{key:cat},
@@ -885,7 +922,7 @@ function GastosFixes({data,setData}) {
       e('div',{style:{marginBottom:11}},
         e('div',{style:{color:C.dim,fontSize:10,fontWeight:600,marginBottom:3,textTransform:'uppercase'}},'Categoria'),
         e('div',{style:{display:'flex',gap:6,flexWrap:'wrap',marginBottom:6}},
-          [...new Set(data.gastosFixes.map(g=>g.categoria))].filter(Boolean).map(c=>
+          [...new Set(fixesPerMes.map(g=>g.categoria))].filter(Boolean).map(c=>
             e('button',{key:c,onClick:()=>setForm(f=>({...f,categoria:c})),style:{
               background:form.categoria===c?colorPerCat(c)+'33':'transparent',
               color:form.categoria===c?colorPerCat(c):C.dim,
