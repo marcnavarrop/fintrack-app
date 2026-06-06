@@ -578,21 +578,27 @@ function Modal({title,onClose,children}) {
   return e('div',{onClick:onClose,style:{position:'fixed',inset:0,background:'#000b',zIndex:1000,display:'flex',alignItems:'flex-end',justifyContent:'center',padding:'0'}},
     e('div',{
       onClick:ev=>ev.stopPropagation(),
-      onTouchStart:ev=>{startY.current=ev.touches[0].clientY;isDragging.current=false;},
+      onTouchStart:ev=>{
+        // Only start drag if touching the handle area (top 50px)
+        if(ev.touches[0].clientY - ev.currentTarget.getBoundingClientRect().top < 50) {
+          startY.current=ev.touches[0].clientY;isDragging.current=false;
+          ev.preventDefault();
+        }
+      },
       onTouchMove:ev=>{
         if(startY.current===null)return;
         const dy=ev.touches[0].clientY-startY.current;
-        if(dy>10)isDragging.current=true;
-        if(dy>0) ev.currentTarget.style.transform='translateY('+dy+'px)';
+        if(dy>8)isDragging.current=true;
+        if(dy>0){ev.currentTarget.style.transform='translateY('+Math.min(dy,200)+'px)';ev.preventDefault();}
       },
       onTouchEnd:ev=>{
-        const dy=ev.changedTouches[0].clientY-(startY.current||0);
+        const dy=startY.current!==null?ev.changedTouches[0].clientY-startY.current:0;
         ev.currentTarget.style.transform='';
-        if(dy>80&&isDragging.current) onClose();
+        if(dy>60&&isDragging.current) onClose();
         startY.current=null;isDragging.current=false;
       },
-      style:{background:C.surface,border:'1px solid '+C.border,borderRadius:'16px 16px 0 0',padding:22,width:'100%',maxWidth:500,maxHeight:'88vh',overflowY:'auto',transition:'transform .1s',paddingBottom:'calc(22px + env(safe-area-inset-bottom))'}},
-      e('div',{style:{width:36,height:4,borderRadius:2,background:C.border,margin:'0 auto 14px',cursor:'grab'}}),
+      style:{background:C.surface,border:'1px solid '+C.border,borderRadius:'16px 16px 0 0',padding:22,width:'100%',maxWidth:500,maxHeight:'88vh',overflowY:'auto',transition:'transform .15s',paddingBottom:'calc(22px + env(safe-area-inset-bottom))',overscrollBehavior:'none'}},
+      e('div',{style:{width:36,height:4,borderRadius:2,background:C.border,margin:'0 auto 14px',cursor:'grab',touchAction:'none'}}),
       e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}},
         e('div',{style:{fontWeight:800,fontSize:14,color:C.text}},title),
         e('button',{onClick:onClose,style:{background:'none',border:'none',color:C.dim,fontSize:16,cursor:'pointer'}},'✕')),
@@ -624,10 +630,10 @@ function Dashboard({data,setData,setTab=()=>{}}) {
   const [errObj,setErrObj]=useState({});
   const iMensual = g => g.periodicitat==='anual' ? g.import/12 : g.import;
   const snap = esActual ? null : snapshots[mesSelec];
-  const totalInv   = esActual ? data.inversions.reduce((s,i)=>s+i.valor,0)     : (snap?.totalInv||0);
-  const totalCash  = esActual ? (data.cash||0)                                  : (snap?.cash||0);
-  const totalBens  = esActual ? data.bens.reduce((s,b)=>s+b.valorActual,0)      : (snap?.totalBens||0);
-  const totalDeute = esActual ? data.bens.reduce((s,b)=>s+(b.deute||0),0)       : (snap?.totalDeute||0);
+  const totalInv   = esActual||esFuturDash ? data.inversions.reduce((s,i)=>s+i.valor,0)   : (snap?.totalInv||0);
+  const totalCash  = esActual ? (data.cash||0)                                            : esFuturDash ? 0 : (snap?.cash||0);
+  const totalBens  = esActual||esFuturDash ? data.bens.reduce((s,b)=>s+b.valorActual,0)  : (snap?.totalBens||0);
+  const totalDeute = esActual||esFuturDash ? data.bens.reduce((s,b)=>s+(b.deute||0),0)   : (snap?.totalDeute||0);
   const fixesMesSelec = (!esActual && !esFuturDash)
     ? null  // from snapshot
     : ((data.historialFixes||{})[mesSelec] || data.gastosFixes);
@@ -637,18 +643,17 @@ function Dashboard({data,setData,setTab=()=>{}}) {
       ? fixesMesSelec.reduce((s,g)=>s+iMensual(g),0)
       : (snap?.totalFixes||0);
   const totalVars  = esActual ? Object.values(data.historialVariables?.[avuiKey]||{}).reduce((s,v)=>s+v,0) : (snap?.totalVars||0);
-  // Ingressos extra del mes seleccionat
-  // Uses x.mes field (YYYY-MM) if available, falls back to x.data prefix
-  const ingresosExtraMes = esActual
-    ? (data.ingresosExtra||[]).filter(x=>(x.mes||x.data||'').startsWith(avuiKey))
-    : (snap?.ingresosExtra||[]);
+  // Ingressos extra del mes seleccionat - always filter by mesSelec
+  const ingresosExtraMes = !esActual && !esFuturDash
+    ? (snap?.ingresosExtra||[])
+    : (data.ingresosExtra||[]).filter(x=>(x.mes||(x.data||'').slice(0,7))===(esFuturDash?mesSelec:avuiKey));
   const ingresosExtraTotal = ingresosExtraMes.reduce((s,x)=>s+x.import,0);
-  const nomina     = esActual ? data.ingressos : (snap?.ingressos||data.ingressos);
+  const nomina     = esActual ? data.ingressos : esFuturDash ? 0 : (snap?.ingressos||data.ingressos);
   const totalIngressos = nomina + ingresosExtraTotal;
   const estalvi    = (nomina + ingresosExtraTotal) - totalFixes - totalVars;
   const patrimoni  = totalInv + totalBens - totalDeute + totalCash;
-  const guanyInv   = esActual ? data.inversions.reduce((s,i)=>s+(i.valor-i.cost),0) : (snap?.guanyInv||0);
-  const pctInv     = esActual ? gainPct(totalInv, data.inversions.reduce((s,i)=>s+i.cost,0)) : (snap?.pctInv||0);
+  const guanyInv   = esActual||esFuturDash ? data.inversions.reduce((s,i)=>s+(i.valor-i.cost),0) : (snap?.guanyInv||0);
+  const pctInv     = esActual||esFuturDash ? gainPct(totalInv, data.inversions.reduce((s,i)=>s+i.cost,0)) : (snap?.pctInv||0);
   const distribTotal = totalInv + Math.max(0,totalBens-totalDeute) + totalCash;
   const distrib = [
     {name:'Inversions',value:totalInv,color:C.accent,pct:distribTotal>0?Math.round(totalInv/distribTotal*100):0},
@@ -859,6 +864,21 @@ function GastosFixes({data,setData}) {
   };
 
   return e('div',null,
+    // Navegació de mesos fixes
+    e('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:12,background:C.surface,borderRadius:10,padding:'8px 12px',border:'1px solid '+C.border}},
+      e('button',{onClick:()=>setMesSelecF(mesosFixes[mesIdxF-1]),disabled:mesIdxF===0,
+        style:{background:'none',border:'1px solid '+C.border,color:mesIdxF===0?C.border:C.dim,borderRadius:7,width:28,height:28,cursor:mesIdxF===0?'default':'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}},'‹'),
+      e('div',{style:{flex:1,textAlign:'center'}},
+        e('div',{style:{color:esActualF?C.accent:esFuturF?C.yellow:C.text,fontWeight:700,fontSize:13}},
+          esActualF?'Mes actual — '+mesLabel(avuiKey):mesLabel(mesSelecF)),
+        esFuturF&&e('div',{style:{color:C.yellow,fontSize:9}},'📅 fixes programats'),
+        !esActualF&&!esFuturF&&e('div',{style:{color:C.dim,fontSize:9}},"fixes d'aquest mes")),
+      e('button',{onClick:()=>setMesSelecF(mesosFixes[mesIdxF+1]),disabled:mesIdxF===mesosFixes.length-1,
+        style:{background:'none',border:'1px solid '+C.border,color:mesIdxF===mesosFixes.length-1?C.border:C.dim,borderRadius:7,width:28,height:28,cursor:mesIdxF===mesosFixes.length-1?'default':'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}},'›'),
+      !esActualF&&e('button',{
+        onClick:()=>setData(d=>({...d,historialFixes:{...(d.historialFixes||{}),[mesSelecF]:d.gastosFixes}})),
+        style:{background:C.accentDim,border:'1px solid '+C.accent+'33',color:C.accent,borderRadius:7,padding:'3px 9px',cursor:'pointer',fontSize:10,fontFamily:'inherit',fontWeight:700,whiteSpace:'nowrap'}
+      },'💾 Desar per a aquest mes')),
     e('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}},
       e('div',null,
         e('div',{style:{color:C.dim,fontSize:10,letterSpacing:1}},t('totalMensual')),
@@ -873,7 +893,7 @@ function GastosFixes({data,setData}) {
         e('div',{style:{display:'grid',gap:5}},
           [...fixesPerMes].sort((a,b)=>importMensual(b)-importMensual(a)).slice(0,5).map(g=>{
             const pct=total>0?Math.round((importMensual(g)/total)*100):0;
-            const col=g.color||colorPerCat(g.categoria);
+            const col=colorPerCat(g.categoria)||g.color||C.accent;
             return e('div',{key:g.id},
               e('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:2}},
                 e('span',{style:{color:C.text,fontSize:10,fontWeight:600,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginRight:6}},g.nom),
